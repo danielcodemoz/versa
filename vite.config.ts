@@ -1,6 +1,7 @@
 import { copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import { defineConfig } from 'vite'
+import release from './downloads/windows-release.json'
 
 export default defineConfig({
   build: {
@@ -22,6 +23,17 @@ export default defineConfig({
       }
     },
     closeBundle() {
+      const exe = `Versa-Setup-${release.version}.exe`
+      const url = `https://github.com/danielcodemoz/versa/releases/download/v${release.version}/${exe}`
+      mkdirSync(`dist/downloads/${exe}`, { recursive: true })
+      writeFileSync(`dist/downloads/${exe}/index.html`, `<!doctype html>
+<html lang="pt-MZ"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="refresh" content="0;url=${url}">
+<title>Descarregar Versa</title></head>
+<body><a href="${url}">Descarregar ${exe} / Download ${exe}</a><p><a href="/downloads/">Outros instaladores / Other installers</a></p></body></html>
+`)
+
       mkdirSync('dist/avif', { recursive: true })
       writeFileSync('dist/avif/encoder.wasm.gzip', gzipSync(readFileSync('node_modules/@jsquash/avif/codec/enc/avif_enc.wasm'), { level: 9 }))
       copyFileSync('node_modules/@jsquash/avif/LICENSE', 'dist/avif/LICENSE')

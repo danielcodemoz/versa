@@ -93,6 +93,7 @@ jobs:
     timeout-minutes: 10
     env:
       VERSA_DEPLOYMENT_URL: https://versa.danielpro.dev/
+      VERSA_EXPECT_INSTALLER: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

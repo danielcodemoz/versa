@@ -294,3 +294,5 @@ footer p a{font-weight:800}
 .release-back svg{rotate:180deg}
 .release-actions{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0 15px}
 .release-formats{font-size:.84rem;color:var(--muted)}
+.release-actions .button-secondary{background:var(--surface);color:var(--ink)}
+.release-other{display:flex;justify-content:center;gap:16px;font-size:.82rem;color:var(--muted);margin-top:16px}

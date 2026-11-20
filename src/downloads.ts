@@ -1,7 +1,7 @@
 import './style.css'
 import { t, type Language, type Phrase } from '../packages/engine/catalog'
 import { icon } from './icons'
-import config from '../apps/desktop/src-tauri/tauri.conf.json'
+import { exeName, releaseFiles, releases, sizeInMB, version } from './release'
 import logoLight from '../brand/logo-light.svg'
 import logoDark from '../brand/logo-dark.svg'
 
@@ -9,7 +9,6 @@ const app = document.querySelector<HTMLDivElement>('#download-app')!
 let language: Language = localStorage.getItem('versa-language') === 'en' ? 'en' : 'pt'
 let theme = localStorage.getItem('versa-theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 const phrase = (message: Phrase) => t(language, message)
-const releases = 'https://github.com/danielcodemoz/versa/releases'
 
 function render() {
   document.documentElement.lang = language === 'pt' ? 'pt-MZ' : 'en'
@@ -29,13 +28,18 @@ function render() {
         <a class="text-link release-back" href="/#roda">${icon('arrow', 16)} ${phrase(['Voltar à roda no browser', 'Back to the browser wheel'])}</a>
         <div class="release-heading">
           <span class="release-icon">${icon('windows', 39)}</span>
-          <div><h1>${phrase(['Versa para Windows', 'Versa for Windows'])}</h1><p class="kicker">Windows 10/11 · x64 · v${config.version}</p></div>
+          <div><h1>${phrase(['Versa para Windows', 'Versa for Windows'])}</h1><p class="kicker">Windows 10/11 · x64 · v${version}</p></div>
         </div>
         <p>${phrase(['Arrasta um ficheiro no Explorador e toca em Shift, que a roda trata do resto.', 'Drag a file in File Explorer and tap Shift to open the wheel.'])}</p>
         <div class="release-actions">
-          <a class="button" href="${releases}">${icon('down', 22)} ${phrase(['Ver instaladores no GitHub', 'View installers on GitHub'])}</a>
+          <a class="button" href="${releaseFiles}/${exeName}">${icon('down', 22)} ${phrase(['Descarregar .exe', 'Download .exe'])} · ${sizeInMB('exe', language)}</a>
+          <a class="button button-secondary" href="${releaseFiles}/Versa-${version}-x64.msi">${phrase(['Descarregar .msi', 'Download .msi'])} · ${sizeInMB('msi', language)}</a>
         </div>
         <p class="release-formats">${phrase(['O .exe instala para o utilizador actual. O .msi serve para instalação gerida.', 'The .exe installs for the current user. The .msi is for managed installation.'])}</p>
+      </div>
+      <div class="shell release-other">
+        <a href="${releaseFiles}/SHA256SUMS.txt">SHA-256</a>
+        <a href="${releases}">${phrase(['Versões no GitHub', 'GitHub releases'])}</a>
       </div>
     </main>
   `
