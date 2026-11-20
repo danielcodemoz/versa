@@ -31,3 +31,9 @@ Um único pacote TypeScript (pdf-lib, pdf.js e similares), partilhado pelo site 
 ## Publicação
 
 Site estático (HTML/CSS/JS); `index.html` na raiz **ou** `dist/index.html`. Não commits `.exe`, `.zip`, `.msi` nem ficheiros grandes — o instalador liga-se a uma Release pública ou URL externo. Segue o `AGENTS.md`.
+
+## Progresso por fase
+
+- **Fase 1** entrega identidade Caderno Rebelde e site Vite estático com demonstração da roda. Inclui selecção de ficheiros, arrasto, teclado, PT-MZ/EN, temas, movimento reduzido e fotos de referência em `docs/screenshots/fase-1`.
+- Ao arrastar do sistema, o browser só disponibiliza os bytes na primeira largada. A roda pré-selecciona a categoria a partir dos tipos expostos e valida os ficheiros antes de activar a acção. A versão de demonstração produz um resumo de texto e pede uma cópia desbloqueada de ficheiros protegidos.
+- A Fase 2 introduz o motor PDF/imagem. Seguem-se Office/Escola, a app Tauri e a publicação do instalador.
