@@ -2,3 +2,5 @@ node_modules/
 test-results/
 playwright-report/
 *.local
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/

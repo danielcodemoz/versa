@@ -1,0 +1,628 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod files;
+mod gesture;
+#[cfg(windows)]
+mod windows;
+
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::{BTreeMap, HashSet, VecDeque},
+    fs::{self, File},
+    io::Read,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
+        Mutex,
+    },
+};
+use tauri::{
+    ipc::{InvokeBody, Request, Response},
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, DragDropEvent, Emitter, Manager, State, WebviewEvent, WebviewWindow, WindowEvent,
+};
+use tauri_plugin_autostart::ManagerExt as _;
+use tauri_plugin_dialog::DialogExt as _;
+use tauri_plugin_notification::{Action, ActionType, NotificationExt as _};
+
+#[derive(Default)]
+struct Desktop {
+    serial: AtomicU64,
+    conversions: AtomicU32,
+    browser_pid: AtomicU32,
+    recycle: AtomicBool,
+    offer: AtomicBool,
+    processing: AtomicBool,
+    inputs: Mutex<BTreeMap<u64, Input>>,
+    history: Mutex<VecDeque<History>>,
+    converting: Mutex<HashSet<String>>,
+    folder: Mutex<Option<PathBuf>>,
+}
+
+struct Input {
+    window: String,
+    paths: Vec<PathBuf>,
+}
+#[derive(Clone, Serialize)]
+struct Entry {
+    name: String,
+    size: u64,
+}
+
+#[derive(Clone, Serialize)]
+struct Offer {
+    id: Option<u64>,
+    entries: Vec<Entry>,
+    x: f64,
+    y: f64,
+    problem: Option<&'static str>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+struct History {
+    id: u64,
+    name: String,
+    path: PathBuf,
+}
+
+fn record(app: &AppHandle, label: &str, paths: &[PathBuf], x: f64, y: f64, commit: bool) -> Offer {
+    let mut entries = Vec::new();
+    let mut size = 0u64;
+    let mut problem = paths.is_empty().then_some("type");
+    for path in paths.iter().take(256) {
+        let Ok(meta) = path.metadata() else {
+            problem = Some("damaged");
+            break;
+        };
+        if !meta.is_file() {
+            problem = Some("type");
+            break;
+        }
+        if meta.len() == 0 {
+            problem = Some("empty");
+            break;
+        }
+        size = size.saturating_add(meta.len());
+        entries.push(Entry {
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            size: meta.len(),
+        });
+    }
+    if size > files::MAX_BYTES || paths.len() > 256 {
+        problem = Some("large");
+    }
+    let id = if commit && problem.is_none() {
+        let state = app.state::<Desktop>();
+        let mut inputs = state.inputs.lock().expect("input lock");
+        let id = state.serial.fetch_add(1, Ordering::Relaxed) + 1;
+        while inputs.len() >= 6 {
+            inputs.pop_first();
+        }
+        inputs.insert(
+            id,
+            Input {
+                window: label.to_owned(),
+                paths: paths.to_vec(),
+            },
+        );
+        Some(id)
+    } else {
+        None
+    };
+    Offer {
+        id,
+        entries,
+        x,
+        y,
+        problem,
+    }
+}
+
+fn input_paths(state: &Desktop, label: &str, id: u64) -> Result<Vec<PathBuf>, String> {
+    state
+        .inputs
+        .lock()
+        .map_err(|error| error.to_string())?
+        .get(&id)
+        .filter(|input| input.window == label)
+        .map(|input| input.paths.clone())
+        .ok_or_else(|| "Choose the source files again.".into())
+}
+
+#[tauri::command]
+async fn pick(app: AppHandle, window: WebviewWindow) -> Result<Option<Offer>, String> {
+    let label = window.label().to_owned();
+    tauri::async_runtime::spawn_blocking(move || {
+        let selection = app
+            .dialog()
+            .file()
+            .add_filter(
+                "Versa",
+                &[
+                    "pdf", "docx", "xlsx", "pptx", "jpg", "jpeg", "png", "webp", "avif",
+                ],
+            )
+            .blocking_pick_files();
+        Ok(selection.map(|selection| {
+            let paths: Vec<_> = selection
+                .into_iter()
+                .filter_map(|file| file.into_path().ok())
+                .collect();
+            record(&app, &label, &paths, 0.0, 0.0, true)
+        }))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn read_file(
+    app: AppHandle,
+    window: WebviewWindow,
+    id: u64,
+    index: usize,
+) -> Result<Response, String> {
+    let paths = input_paths(&app.state::<Desktop>(), window.label(), id)?;
+    let path = paths
+        .get(index)
+        .cloned()
+        .ok_or_else(|| "File unavailable.".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let input = File::open(path).map_err(|error| error.to_string())?;
+        let mut bytes = Vec::new();
+        input
+            .take(files::MAX_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        if bytes.len() as u64 > files::MAX_BYTES {
+            return Err("File too large.".into());
+        }
+        Ok(Response::new(bytes))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn raw<'a>(request: &'a Request<'_>) -> Result<&'a [u8], String> {
+    if let InvokeBody::Raw(bytes) = request.body() {
+        Ok(bytes.as_slice())
+    } else {
+        Err("Invalid data.".into())
+    }
+}
+fn split_payload(payload: &[u8]) -> Result<(&[u8], &[u8]), String> {
+    let separator = payload
+        .iter()
+        .take(128)
+        .position(|byte| *byte == b'\n')
+        .ok_or("Missing operation header.")?;
+    Ok((&payload[..separator], &payload[separator + 1..]))
+}
+
+#[derive(Deserialize)]
+struct SaveRequest {
+    id: u64,
+    extension: String,
+    english: bool,
+}
+
+fn state_file(app: &AppHandle, name: &str) -> Option<PathBuf> {
+    let directory = app.path().app_data_dir().ok()?;
+    fs::create_dir_all(&directory).ok()?;
+    Some(directory.join(name))
+}
+
+fn write_settings(app: &AppHandle, name: &str, value: &impl Serialize) {
+    if let (Some(path), Ok(bytes)) = (state_file(app, name), serde_json::to_vec(value)) {
+        if let Some(directory) = path.parent() {
+            if let Ok(mut temporary) = tempfile::NamedTempFile::new_in(directory) {
+                use std::io::Write as _;
+                if temporary.write_all(&bytes).is_ok() {
+                    let _ = temporary.persist(path);
+                }
+            }
+        }
+    }
+}
+
+#[tauri::command]
+async fn save_result(
+    app: AppHandle,
+    window: WebviewWindow,
+    request: Request<'_>,
+) -> Result<History, String> {
+    let (header, bytes) = split_payload(raw(&request)?)?;
+    let args: SaveRequest = serde_json::from_slice(header).map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > files::MAX_BYTES * 3 {
+        return Err("Output too large.".into());
+    }
+    let bytes = bytes.to_vec();
+    let label = window.label().to_owned();
+    tauri::async_runtime::spawn_blocking(move || persist(&app, &label, args, &bytes))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn persist(
+    app: &AppHandle,
+    label: &str,
+    args: SaveRequest,
+    bytes: &[u8],
+) -> Result<History, String> {
+    let state = app.state::<Desktop>();
+    let paths = input_paths(&state, label, args.id)?;
+    let source = paths.first().ok_or("Choose source files first.")?;
+    let folder = state
+        .folder
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    let directory = folder
+        .as_deref()
+        .or_else(|| source.parent())
+        .ok_or("Output folder unavailable.")?;
+    let path = files::save_unique(
+        directory,
+        source.file_stem().ok_or("Invalid filename.")?,
+        &args.extension,
+        bytes,
+    )?;
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let id = state.serial.fetch_add(1, Ordering::Relaxed) + 1;
+    let result = History { id, name, path };
+    {
+        let mut history = state.history.lock().map_err(|error| error.to_string())?;
+        history.push_front(result.clone());
+        history.truncate(20);
+        write_settings(app, "history.json", &*history);
+    }
+
+    let (title, open, reveal) = if args.english {
+        ("Done", "Open", "Show in folder")
+    } else {
+        ("Feito", "Abrir", "Mostrar na pasta")
+    };
+    let actions = ActionType::builder(format!("versa-result-{id}"))
+        .actions(vec![
+            Action::builder(format!("open-{id}"), open).build(),
+            Action::builder(format!("reveal-{id}"), reveal).build(),
+        ])
+        .build();
+    let identifier = actions.id().to_owned();
+    let _ = app.notification().register_action_types(vec![actions]);
+    let _ = app
+        .notification()
+        .builder()
+        .title(title)
+        .body(&result.name)
+        .action_type_id(identifier)
+        .show();
+    let count = state.conversions.fetch_add(1, Ordering::Relaxed) + 1;
+    #[cfg(windows)]
+    let memory = windows::working_set(state.browser_pid.load(Ordering::Relaxed));
+    #[cfg(not(windows))]
+    let memory = 0usize;
+    if count >= 40 || memory > 1024 * 1024 * 1024 {
+        state.recycle.store(true, Ordering::Relaxed);
+    }
+    let _ = app.emit("versa-history", ());
+    Ok(result)
+}
+
+#[tauri::command]
+async fn office_pdf(request: Request<'_>) -> Result<Response, String> {
+    let (kind, bytes) = split_payload(raw(&request)?)?;
+    if bytes.len() as u64 > files::MAX_BYTES {
+        return Err("Office file too large.".into());
+    }
+    let kind = std::str::from_utf8(kind)
+        .map_err(|error| error.to_string())?
+        .to_owned();
+    let bytes = bytes.to_vec();
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(windows)]
+        let result = windows::office_pdf(&kind, &bytes);
+        #[cfg(not(windows))]
+        let result: Option<Vec<u8>> = {
+            let _ = (kind, bytes);
+            None
+        };
+        Ok(Response::new(result.unwrap_or_default()))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn history(state: State<'_, Desktop>) -> Vec<History> {
+    state
+        .history
+        .lock()
+        .expect("history lock")
+        .iter()
+        .cloned()
+        .collect()
+}
+
+fn open_history(state: &Desktop, id: u64, reveal: bool) -> Result<(), String> {
+    let path = state
+        .history
+        .lock()
+        .map_err(|error| error.to_string())?
+        .iter()
+        .find(|entry| entry.id == id)
+        .map(|entry| entry.path.clone())
+        .ok_or("Output unavailable.")?;
+    if !path.is_file() {
+        return Err("Output unavailable.".into());
+    }
+    #[cfg(windows)]
+    return windows::open_output(&path, reveal);
+    #[cfg(not(windows))]
+    {
+        let _ = reveal;
+        Err("Windows only.".into())
+    }
+}
+
+#[tauri::command]
+fn open_result(state: State<'_, Desktop>, id: u64, reveal: bool) -> Result<(), String> {
+    open_history(&state, id, reveal)
+}
+
+#[tauri::command]
+fn startup(app: AppHandle, enabled: Option<bool>) -> Result<bool, String> {
+    let manager = app.autolaunch();
+    if let Some(enabled) = enabled {
+        if enabled {
+            manager.enable()
+        } else {
+            manager.disable()
+        }
+        .map_err(|error| error.to_string())?;
+    }
+    manager.is_enabled().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn output_folder(app: AppHandle, change: Option<bool>) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<Desktop>();
+        if let Some(change) = change {
+            let next = if change {
+                app.dialog()
+                    .file()
+                    .blocking_pick_folder()
+                    .and_then(|path| path.into_path().ok())
+            } else {
+                None
+            };
+            if next.is_some() || !change {
+                let mut folder = state.folder.lock().map_err(|error| error.to_string())?;
+                *folder = next;
+                write_settings(&app, "folder.json", &*folder);
+            }
+        }
+        let folder = state
+            .folder
+            .lock()
+            .expect("folder lock")
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned());
+        Ok(folder)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn hide_window(app: &AppHandle, window: &WebviewWindow) {
+    let state = app.state::<Desktop>();
+    if window.label() == "gesture" {
+        state.processing.store(false, Ordering::Relaxed);
+        state.offer.store(false, Ordering::Relaxed);
+    }
+    let _ = window.hide();
+    if state.converting.lock().expect("conversion lock").is_empty()
+        && state.recycle.swap(false, Ordering::Relaxed)
+    {
+        write_settings(app, "recycling.json", &true);
+        app.request_restart();
+    }
+}
+
+#[tauri::command]
+fn hide(app: AppHandle, window: WebviewWindow) {
+    hide_window(&app, &window);
+}
+
+#[tauri::command]
+fn conversion_activity(app: AppHandle, window: WebviewWindow, active: bool) {
+    let state = app.state::<Desktop>();
+    let mut conversions = state.converting.lock().expect("conversion lock");
+    if active {
+        conversions.insert(window.label().to_owned());
+    } else {
+        conversions.remove(window.label());
+    }
+}
+
+#[tauri::command]
+fn idle(app: AppHandle, window: WebviewWindow) {
+    if app.state::<Desktop>().recycle.load(Ordering::Relaxed) {
+        hide_window(&app, &window);
+    }
+}
+
+fn show_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn load_desktop(app: &AppHandle) {
+    let state = app.state::<Desktop>();
+    if let Some(history) = state_file(app, "history.json")
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice::<VecDeque<History>>(&bytes).ok())
+    {
+        state.serial.store(
+            history.iter().map(|entry| entry.id).max().unwrap_or(0),
+            Ordering::Relaxed,
+        );
+        *state.history.lock().expect("history lock") = history;
+    }
+    if let Some(folder) = state_file(app, "folder.json")
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice::<Option<PathBuf>>(&bytes).ok())
+    {
+        *state.folder.lock().expect("folder lock") = folder.filter(|path| path.is_dir());
+    }
+}
+
+fn main() {
+    #[cfg(windows)]
+    if windows::reject_administrator() {
+        return;
+    }
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            show_main(app)
+        }))
+        .manage(Desktop::default())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .args(["--background"])
+                .build(),
+        )
+        .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![
+            pick,
+            read_file,
+            save_result,
+            office_pdf,
+            history,
+            open_result,
+            startup,
+            output_folder,
+            hide,
+            idle,
+            conversion_activity
+        ])
+        .setup(|app| {
+            let handle = app.handle().clone();
+            load_desktop(&handle);
+            let actions = handle.clone();
+            app.notification().on_action(move |action| {
+                if let Some((verb, id)) = action.action_id().split_once('-') {
+                    if let Ok(id) = id.parse() {
+                        let _ = open_history(&actions.state::<Desktop>(), id, verb == "reveal");
+                    }
+                } else {
+                    show_main(&actions);
+                }
+            })?;
+            let open = MenuItem::with_id(app, "open", "Abrir Versa", true, None::<&str>)?;
+            let exit = MenuItem::with_id(app, "quit", "Sair / Quit", true, None::<&str>)?;
+            let tray = TrayIconBuilder::new()
+                .tooltip("Versa")
+                .menu(&Menu::with_items(app, &[&open, &exit])?)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "open" => show_main(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main(tray.app_handle());
+                    }
+                });
+            let tray = if let Some(icon) = app.default_window_icon() {
+                tray.icon(icon.clone())
+            } else {
+                tray
+            };
+            tray.build(app)?;
+            let recycled = state_file(&handle, "recycling.json")
+                .is_some_and(|path| fs::remove_file(path).is_ok());
+            if !recycled && !std::env::args().any(|arg| arg == "--background") {
+                show_main(&handle);
+            }
+            #[cfg(windows)]
+            {
+                if let Some(window) = handle.get_webview_window("gesture") {
+                    let browser = handle.clone();
+                    let _ = window.with_webview(move |webview| {
+                        if let Ok(controller) = unsafe { webview.controller().CoreWebView2() } {
+                            let mut pid = 0;
+                            if unsafe { controller.BrowserProcessId(&mut pid) }.is_ok() {
+                                browser
+                                    .state::<Desktop>()
+                                    .browser_pid
+                                    .store(pid, Ordering::Relaxed);
+                            }
+                        }
+                    });
+                }
+                windows::poll(handle);
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+                    hide_window(window.app_handle(), &webview);
+                }
+            }
+        })
+        .on_webview_event(|view, event| {
+            let WebviewEvent::DragDrop(event) = event else {
+                return;
+            };
+            let app = view.app_handle();
+            let label = view.label();
+            let state = app.state::<Desktop>();
+            match event {
+                DragDropEvent::Enter { paths, position } => {
+                    if label == "gesture" {
+                        state.offer.store(true, Ordering::Relaxed);
+                    }
+                    let offer = record(app, label, paths, position.x, position.y, true);
+                    let _ = app.emit_to(label, "versa-drag-enter", offer);
+                }
+                DragDropEvent::Over { position } => {
+                    let _ = app.emit_to(label, "versa-drag-over", (position.x, position.y));
+                }
+                DragDropEvent::Drop { paths, position } => {
+                    if label == "gesture" {
+                        state.processing.store(true, Ordering::Relaxed);
+                    }
+                    let offer = record(app, label, paths, position.x, position.y, true);
+                    let _ = app.emit_to(label, "versa-drag-drop", offer);
+                }
+                DragDropEvent::Leave => {
+                    let _ = app.emit_to(label, "versa-drag-leave", ());
+                }
+                _ => {}
+            }
+        })
+        .run(tauri::generate_context!())
+        .expect("Versa could not start");
+}
