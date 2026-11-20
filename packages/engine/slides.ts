@@ -98,7 +98,7 @@ export function slidesHandler(asImages: boolean): Handler {
         if (rgb) theme[entry.localName] = rgb
       }
     }
-    const output = asImages ? undefined : await newPdf(localName(file, 'pdf', ' (Versa)'))
+    const output = asImages ? undefined : await newPdf(localName(file, 'pdf'))
     const bitmaps: Record<string, Uint8Array> = {}
     for (const [index, path] of paths.entries()) {
       const slide = xml(parts, path)
@@ -139,6 +139,6 @@ export function slidesHandler(asImages: boolean): Handler {
       }
       progress(Math.round(10 + 83 * (index + 1) / paths.length))
     }
-    return output ? output.finish() : { blob: await zipFiles(bitmaps), name: localName(file, 'zip', ' (Versa - slides)') }
+    return output ? output.finish() : { blob: await zipFiles(bitmaps), name: localName(file, 'zip', ' - slides (Versa)') }
   }
 }

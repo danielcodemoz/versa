@@ -19,7 +19,7 @@ export interface Context {
 }
 
 export type Handler = (context: Context) => Promise<ConversionResult>
-export const localName = (file: File, extension: string, suffix = '') =>
+export const localName = (file: File, extension: string, suffix = ' (Versa)') =>
   `${file.name.replace(/\.[^.]+$/, '')}${suffix}.${extension}`
 
 export function bytesBlob(bytes: Uint8Array, type: string) {

@@ -35,3 +35,9 @@ o que verificaste (saída do curl) e o que ficou por fazer.
 ## Desenvolvimento local
 
 Instala com `npm ci`, lança com `npm run dev` e verifica com `npm run build` e `npm test`. Para o Playwright, instala o Chromium com `npx playwright install chromium` ou define `CHROMIUM_PATH` para uma instalação existente. Faz commit do `dist/` gerado, que é a pasta servida pelo Danielpro.
+
+## Verificar o worker PDF publicado
+
+Após o merge de qualquer mudança no motor ou no build, abre o site publicado, converte o PDF de exemplo para texto e confirma que o resultado descarrega. No separador de rede do Chromium, verifica que o pedido `pdf.worker.min-*.js` responde `200` com `Content-Type: application/javascript` ou `text/javascript` e confirma que a consola não mostra erros. Mantém a extensão `.js` do worker no Vite para a tabela MIME do nginx. Faz esta verificação também em produção porque o Vite Preview serve `.mjs` com o MIME correcto.
+
+A mesma verificação pode correr com `VERSA_DEPLOYMENT_URL=https://versa.danielpro.dev npm test -- tests/deployment.spec.ts`.

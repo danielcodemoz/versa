@@ -44,13 +44,16 @@ export async function schoolHeader({ files: [file], options, progress }: Context
   canvas.width = canvas.height = 0
   for (const [index, page] of input.getPages().entries()) {
     const { rotatedWidth, rotatedHeight } = dimensions(page)
-    const headerHeight = Math.max(38, Math.min(90, rotatedWidth * .115))
-    const target = output.addPage([rotatedWidth, rotatedHeight + headerHeight])
-    await placePage(output, page, target, 0, 0, rotatedWidth, rotatedHeight)
-    target.drawImage(header, { x: 0, y: rotatedHeight + 7, width: rotatedWidth, height: headerHeight - 7 })
+    const paper: [number, number] = rotatedWidth > rotatedHeight ? [a4[1], a4[0]] : a4
+    const target = output.addPage(paper)
+    const [width, height] = paper
+    const margin = 16
+    const headerHeight = 54
+    await placePage(output, page, target, margin, margin, width - 2 * margin, height - headerHeight - 2 * margin)
+    target.drawImage(header, { x: margin, y: height - headerHeight - margin, width: width - 2 * margin, height: headerHeight })
     progress(Math.round((index + 1) / input.getPageCount() * 93))
   }
-  return pdfOutput(output, localName(file, 'pdf', ' (Versa - escola)'))
+  return pdfOutput(output, localName(file, 'pdf', ' - escola (Versa)'))
 }
 
 const a4 = [595.28, 841.89] as [number, number]
@@ -66,7 +69,7 @@ export async function schoolA4({ files: [file], options, progress }: Context) {
     sheet.drawLine({ start: { x: 16, y: half }, end: { x: width - 16, y: half }, color: rgb(.66, .66, .66), thickness: .5, dashArray: [4, 4] })
     progress(Math.round(Math.min(index + 2, input.getPageCount()) / input.getPageCount() * 93))
   }
-  return pdfOutput(output, localName(file, 'pdf', ' (Versa - 2 por A4)'))
+  return pdfOutput(output, localName(file, 'pdf', ' - 2 por A4 (Versa)'))
 }
 
 type Point = [number, number]
@@ -151,5 +154,5 @@ export async function schoolScan({ files, progress }: Context) {
     } finally { original.width = original.height = 0 }
     progress(Math.round((index + 1) / files.length * 93))
   }
-  return pdfOutput(output, localName(files[0], 'pdf', ' (Versa - fichas)'))
+  return pdfOutput(output, localName(files[0], 'pdf', ' - fichas (Versa)'))
 }

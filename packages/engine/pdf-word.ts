@@ -4,7 +4,7 @@ import { openPdf, renderPage } from './render-pdf'
 import { canvasBlob, localName, type Context } from './types'
 
 export async function pdfWord({ files: [file], options, progress }: Context) {
-  const pdf = await openPdf(file, options.password)
+  const { pdf, close } = await openPdf(file, options.password)
   const children: Paragraph[] = []
   try {
     for (let index = 1; index <= pdf.numPages; index++) {
@@ -55,8 +55,8 @@ export async function pdfWord({ files: [file], options, progress }: Context) {
       progress(Math.round(index / pdf.numPages * 90))
     }
     const document = new Document({ sections: [{ children }] })
-    return { blob: await Packer.toBlob(document), name: localName(file, 'docx', ' (Versa)') }
+    return { blob: await Packer.toBlob(document), name: localName(file, 'docx') }
   } finally {
-    await pdf.destroy()
+    await close()
   }
 }

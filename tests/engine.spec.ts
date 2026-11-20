@@ -32,7 +32,7 @@ for (const [id, extension] of cases) {
     const downloadPending = page.waitForEvent('download')
     await page.getByRole('link', { name: 'Descarregar', exact: true }).click()
     const download = await downloadPending
-    expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${extension}$`))
+    expect(download.suggestedFilename()).toMatch(new RegExp(` \\(Versa\\)\\.${extension}$`))
     const bytes = await readFile((await download.path())!)
     expect(bytes.length).toBeGreaterThan(10)
     if (extension === 'txt') expect(bytes.toString()).toContain('Versa - Ficha de exemplo')
@@ -81,5 +81,5 @@ test('dropping a valid PDF on an action produces a real result', async ({ page }
   await target.dispatchEvent('dragover', { dataTransfer })
   await target.dispatchEvent('drop', { dataTransfer })
   await expect(page.getByRole('status')).toHaveText('Conversão concluída')
-  await expect(page.locator('.wheel-message')).toContainText('ficha.txt')
+  await expect(page.locator('.wheel-message')).toContainText('ficha (Versa).txt')
 })

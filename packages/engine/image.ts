@@ -34,7 +34,7 @@ export function encodeImage(extension: 'jpg' | 'png' | 'webp' | 'avif', sizing?:
         return { blob: bytesBlob(new Uint8Array(encoded), 'image/avif'), name: localName(file, 'avif') }
       }
       const mime = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`
-      return { blob: await canvasBlob(canvas, mime, adjusted), name: localName(file, extension, ' (Versa)') }
+      return { blob: await canvasBlob(canvas, mime, adjusted), name: localName(file, extension) }
     } finally {
       canvas.width = canvas.height = 0
     }
@@ -57,5 +57,5 @@ export async function imagesPdf({ files, progress }: Context) {
     }
     progress(Math.round((index + 1) / files.length * 94))
   }
-  return pdfOutput(output, localName(files[0], 'pdf', ' (Versa)'))
+  return pdfOutput(output, localName(files[0], 'pdf'))
 }
