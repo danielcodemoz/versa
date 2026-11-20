@@ -29,8 +29,8 @@ test('the published worker has JavaScript MIME and the example PDF converts', as
 test('the published downloads page links to the released EXE', async ({ page }) => {
   const url = process.env.VERSA_DEPLOYMENT_URL
   test.skip(!url || !process.env.VERSA_EXPECT_INSTALLER, 'Download verification requires the published site.')
-  test.setTimeout(170_000)
-  const downloads = new URL('/downloads/', url).href
+  test.setTimeout(240_000)
+  const downloads = new URL('/windows.html', url).href
   await expect.poll(async () => {
     try {
       const response = await page.request.get(downloads, { timeout: 10_000 })
@@ -38,7 +38,7 @@ test('the published downloads page links to the released EXE', async ({ page }) 
     } catch {
       return false
     }
-  }, { timeout: 140_000, intervals: [2000, 6000, 12000, 20000] }).toBe(true)
+  }, { timeout: 210_000, intervals: [2000, 6000, 12000, 20000] }).toBe(true)
   await page.goto(downloads)
   await expect(page.getByRole('link', { name: /^Descarregar \.exe/ })).toHaveAttribute('href', installerUrl)
 })

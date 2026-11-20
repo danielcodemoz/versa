@@ -53,7 +53,7 @@ app.innerHTML = `
             <a class="button download" href="${installerUrl}">${icon('windows', 20)} ${label('download')}</a>
             <a class="text-link" href="#roda">${label('browser')} ${icon('down', 16)}</a>
           </div>
-          <p class="download-info">${label('downloadInfo')} · <a href="/downloads/">${label('downloadOptions')}</a></p>
+          <p class="download-info">${label('downloadInfo')} · <a href="/windows.html">${label('downloadOptions')}</a></p>
         </div>
         <section class="lab" id="roda" tabindex="-1" aria-labelledby="wheel-title">
           ${overlay ? `<button class="switch gesture-close" type="button" data-dismiss aria-label="${t(language, ['Fechar a roda', 'Close wheel'])}">${icon('close', 19)}</button>` : ''}

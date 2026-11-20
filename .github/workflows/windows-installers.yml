@@ -105,6 +105,6 @@ jobs:
       - name: Inspect published HTTP responses
         run: |
           curl -sSI --max-time 15 "$VERSA_DEPLOYMENT_URL" || true
-          curl -sSI --max-time 15 "${VERSA_DEPLOYMENT_URL}downloads/" || true
+          curl -sSI --max-time 15 "${VERSA_DEPLOYMENT_URL}windows.html" || true
       - name: Check the worker and installer page
         run: npm test -- tests/deployment.spec.ts

@@ -10,7 +10,7 @@ test('the Windows button opens the versioned release and the downloads page fits
   const installer = page.getByRole('link', { name: 'Descarregar para Windows' })
   await expect(installer).toHaveAttribute('href', /^https:\/\/github\.com\/danielcodemoz\/versa\/releases\/download\/v[\d.]+\/Versa-Setup-[\d.]+\.exe$/)
   await page.getByRole('link', { name: 'Outros instaladores' }).click()
-  await expect(page).toHaveURL(/\/downloads\/$/)
+  await expect(page).toHaveURL(/\/windows\.html$/)
   await expect(page.getByRole('heading', { name: 'Versa para Windows' })).toBeVisible()
   await expect(page.locator('.release-actions a').first()).toHaveAttribute('href', /^https:\/\/github\.com\/danielcodemoz\/versa\/releases/)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
