@@ -258,3 +258,6 @@ footer p a{font-weight:800}
 .wheel-settings{font-size:.78rem;text-align:center;margin-top:5px}
 .wheel-settings label{display:inline-flex;gap:7px;align-items:center;margin:6px}
 .wheel-settings input[type=number]{width:85px}
+.wheel-settings input[type=text]{max-width:150px}
+.wheel-settings input[type=file]{max-width:174px;font-size:.72rem}
+.versa-docx, .versa-docx *{color-scheme:light}

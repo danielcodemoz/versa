@@ -67,5 +67,5 @@ export const questions = [
   [['Os meus ficheiros saem do computador?', 'Do my files leave my computer?'], ['Os ficheiros são lidos e processados no próprio dispositivo.', 'Files are read and processed on your own device.']],
   [['Preciso de criar conta?', 'Do I need an account?'], ['O Versa é grátis e pode ser usado sem conta.', 'Versa is free and works without an account.']],
   [['Como uso a roda no telemóvel?', 'How do I use the wheel on my phone?'], ['Toca em Escolher ficheiros, depois numa categoria e na acção que queres.', 'Tap Choose files, then a category and the action you want.']],
-  [['O que posso experimentar agora?', 'What can I try today?'], ['Podes converter PDFs e imagens. Escolhe um ficheiro teu ou experimenta com o PDF de exemplo.', 'You can convert PDFs and images. Pick your own file or try the sample PDF.']],
+  [['O que posso experimentar agora?', 'What can I try today?'], ['Podes converter PDFs, imagens, ficheiros Office e fichas escolares. Escolhe um ficheiro teu ou experimenta com o PDF de exemplo.', 'You can convert PDFs, images, Office files and school worksheets. Pick your own file or try the sample PDF.']],
 ] as const

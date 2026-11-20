@@ -114,11 +114,16 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     }).join('')
     wheel.classList.toggle('is-subring', Boolean(category))
     wheel.classList.toggle('is-busy', percent !== undefined)
-    const configure = category === 'pdf' || category === 'tools' || category === 'image'
+    const configure = category === 'pdf' || category === 'tools' || category === 'image' || category === 'school'
+    const wasOpen = settings.querySelector('details')?.open
     settings.hidden = !configure || Boolean(problem) || !files.length || percent !== undefined
-    if (!settings.hidden) settings.innerHTML = `<details><summary>${t(getLanguage(), ['Opções de saída', 'Output options'])}</summary>
-      <label>${t(getLanguage(), ['Qualidade', 'Quality'])} <input type="range" min="20" max="100" value="${Math.round((options.quality ?? (category === 'pdf' ? .58 : .88)) * 100)}" data-option="quality"></label>
-      ${category === 'pdf' ? `<label>${t(getLanguage(), ['Rotação', 'Rotation'])} <select data-option="rotation">${[90,180,270].map(value => `<option value="${value}" ${options.rotation === value ? 'selected' : ''}>${value}°</option>`).join('')}</select></label>` : `<label>${t(getLanguage(), ['Dimensão máxima (px)', 'Maximum dimension (px)'])}<input type="number" min="64" max="8192" placeholder="1200" value="${options.maxDimension ?? ''}" data-option="maxDimension"></label>`}
+    if (!settings.hidden) settings.innerHTML = `<details ${wasOpen ? 'open' : ''}><summary>${t(getLanguage(), ['Opções de saída', 'Output options'])}</summary>
+      ${category === 'school' ? `
+        <label>${t(getLanguage(), ['Nome da escola', 'School name'])} <input type="text" maxlength="100" value="${escape(options.header ?? '')}" placeholder="Escola" data-option="header"></label>
+        <label>${t(getLanguage(), ['Logótipo', 'Logo'])} <input type="file" accept=".png,.jpeg,.jpg,.webp" data-option="logo"></label>
+        <span class="logo-label" role="status">${escape(options.logo?.name ?? '')}</span>
+      ` : `<label>${t(getLanguage(), ['Qualidade', 'Quality'])} <input type="range" min="20" max="100" value="${Math.round((options.quality ?? (category === 'pdf' ? .58 : .88)) * 100)}" data-option="quality"></label>
+      ${category === 'pdf' ? `<label>${t(getLanguage(), ['Rotação', 'Rotation'])} <select data-option="rotation">${[90,180,270].map(value => `<option value="${value}" ${options.rotation === value ? 'selected' : ''}>${value}°</option>`).join('')}</select></label>` : `<label>${t(getLanguage(), ['Dimensão máxima (px)', 'Maximum dimension (px)'])}<input type="number" min="64" max="8192" placeholder="1200" value="${options.maxDimension ?? ''}" data-option="maxDimension"></label>`}`}
       </details>`
     control.hidden = !category && !files.length
     control.innerHTML = `${icon(category ? 'arrow' : 'close', 14)} ${local(category ? 'back' : 'close')}`
@@ -263,8 +268,27 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     render()
   }
 
+  settings.addEventListener('input', event => {
+    const input = event.target as HTMLInputElement
+    if (input.dataset.option === 'header') options.header = input.value
+  })
   settings.addEventListener('change', event => {
     const input = event.target as HTMLInputElement
+    if (input.dataset.option === 'logo') {
+      const file = input.files?.[0]
+      options.logo = undefined
+      const label = settings.querySelector<HTMLElement>('.logo-label')!
+      if (!file) { label.textContent = ''; return }
+      const validation = options
+      if (/\.(png|jpe?g|webp)$/i.test(file.name) && file.size <= 8 * 1024 ** 2) {
+        void createImageBitmap(file).then(bitmap => {
+          bitmap.close()
+          if (validation !== options || !label.isConnected || input.files?.[0] !== file) return
+          options.logo = file
+          label.textContent = file.name
+        }, () => { label.textContent = t(getLanguage(), ['Logótipo inválido.', 'Invalid logo.']) })
+      } else label.textContent = t(getLanguage(), ['Escolhe um PNG, JPG ou WebP até 8 MB.', 'Choose a PNG, JPG or WebP up to 8 MB.'])
+    }
     const value = Number(input.value)
     if (input.dataset.option === 'quality') options.quality = value / 100
     if (input.dataset.option === 'rotation') options.rotation = value as Options['rotation']

@@ -16,7 +16,6 @@ export async function inspectFiles(files: File[], password?: string): Promise<Pr
     try {
       const head = new Uint8Array(await file.slice(0, 1024).arrayBuffer())
       const header = decode(head)
-      const tail = decode(new Uint8Array(await file.slice(-65557).arrayBuffer()))
       if (kind === 'pdf') {
         if (!/%PDF-\d\.\d/.test(header)) return { kinds, problem: 'damaged' }
         const { checkPdf } = await import('./render-pdf')
@@ -24,9 +23,10 @@ export async function inspectFiles(files: File[], password?: string): Promise<Pr
         if (problem) return { kinds, problem }
       } else if (kind === 'docx' || kind === 'xlsx' || kind === 'pptx') {
         if (head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) return { kinds, problem: 'password' }
-        const signature = tail.lastIndexOf('PK\x05\x06')
-        const root = { docx: 'word/', xlsx: 'xl/', pptx: 'ppt/' }[kind]
-        if (!header.startsWith('PK\x03\x04') || signature < 0 || !tail.includes(root)) return { kinds, problem: 'damaged' }
+        if (!header.startsWith('PK\x03\x04')) return { kinds, problem: 'damaged' }
+        const { openOffice, xml } = await import('./ooxml')
+        const main = { docx: 'word/document.xml', xlsx: 'xl/workbook.xml', pptx: 'ppt/presentation.xml' }[kind]
+        xml(await openOffice(file), main)
       } else {
         const valid = {
           jpg: head[0] === 255 && head[1] === 216 && head[2] === 255,
