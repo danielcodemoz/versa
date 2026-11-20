@@ -1,3 +1,5 @@
+import { sizeInMB, version } from './release'
+
 export const copy = {
   skip: ['Ir para a roda', 'Skip to the wheel'],
   categories: ['Categorias', 'Categories'],
@@ -11,7 +13,8 @@ export const copy = {
   tag: ['Larga o ficheiro. Ganha o recreio.', 'Drop the file. Win recess.'],
   description: ['Converte PDFs, Word, imagens e slides no teu próprio computador. Grátis. Sem enviar nada para lado nenhum.', 'Convert PDFs, Word, images and slides on your own computer. Free. Nothing gets sent anywhere.'],
   download: ['Descarregar para Windows', 'Download for Windows'],
-  downloadInfo: ['Windows 10/11 · em breve', 'Windows 10/11 · coming soon'],
+  downloadInfo: [`Windows 10/11 · v${version} · ${sizeInMB('exe', 'pt')}`, `Windows 10/11 · v${version} · ${sizeInMB('exe', 'en')}`],
+  downloadOptions: ['Outros instaladores', 'Other installers'],
   browser: ['Converter já no browser', 'Convert in your browser'],
   wheel: ['Roda de conversão', 'Conversion wheel'],
   pick: ['Escolher ficheiros', 'Choose files'],

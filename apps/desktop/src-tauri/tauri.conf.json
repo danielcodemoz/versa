@@ -37,10 +37,26 @@
         "dragDropEnabled": true
       }
     ],
-    "security": { "capabilities": ["versa"] }
+    "security": {
+      "capabilities": [
+        "versa"
+      ]
+    }
   },
   "bundle": {
-    "active": false,
-    "icon": ["icons/icon.png", "icons/icon.ico"]
+    "active": true,
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }
