@@ -21,7 +21,7 @@ const excel = {
   buffer: pack({
     'xl/workbook.xml': `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${office}"><sheets><sheet name="Notas" sheetId="1" r:id="rId1"/></sheets></workbook>`,
     'xl/_rels/workbook.xml.rels': relationship('worksheets/sheet1.xml', 'worksheet'),
-    'xl/worksheets/sheet1.xml': '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Nome</t></is></c><c r="B1" t="inlineStr"><is><t>Nota</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Daniel</t></is></c><c r="B2"><v>18</v></c></row></sheetData></worksheet>',
+    'xl/worksheets/sheet1.xml': '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Nome</t></is></c><c r="B1" t="inlineStr"><is><t>Nota</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Daniel</t></is></c><c r="B2"><v>18</v></c><c r="C2"><v>14</v></c><c r="D2"><v>17</v></c><c r="E2"><f>AVERAGE(C2:D2)</f></c><c r="F2"><f>E2*2</f></c><c r="G2"><f>UNSUPPORTED(B2)</f></c><c r="H2"><f>UNSUPPORTED(B2)</f><v>99</v></c></row></sheetData></worksheet>',
   }),
 }
 const slides = {
@@ -57,7 +57,10 @@ for (const [category, recipe, extension, fixture] of cases) {
     if (recipe === 'school-header') {
       await page.getByText('Opções de saída', { exact: true }).click()
       await page.getByLabel('Nome da escola').fill('Escola da Matola')
-      await page.getByLabel('Logótipo').setInputFiles(photo)
+      await expect(page.getByRole('button', { name: 'Escolher logótipo' })).toBeVisible()
+      const chooser = page.waitForEvent('filechooser')
+      await page.getByRole('button', { name: 'Escolher logótipo' }).click()
+      await (await chooser).setFiles(photo)
       await expect(page.locator('.logo-label')).toHaveText(photo.name)
     }
     await page.locator(`.wheel-buttons [data-slice=${recipe}]`).click()
@@ -70,8 +73,23 @@ for (const [category, recipe, extension, fixture] of cases) {
     if (extension === 'pdf') {
       const result = await PDFDocument.load(bytes)
       expect(result.getPageCount()).toBe(recipe === 'school-merge' ? 2 : 1)
-      if (recipe === 'school-header') expect(result.getPage(0).getHeight()).toBeGreaterThan(842)
+      if (recipe === 'school-header') {
+        expect(result.getPage(0).getWidth()).toBeCloseTo(595.28)
+        expect(result.getPage(0).getHeight()).toBeCloseTo(841.89)
+      }
       if (recipe === 'school-a4') expect(result.getPage(0).getHeight()).toBeCloseTo(841.89)
+    }
+    if (recipe === 'excel-pdf') {
+      const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      const task = getDocument({ data: new Uint8Array(bytes) })
+      try {
+        const content = await (await (await task.promise).getPage(1)).getTextContent()
+        const text = content.items.flatMap(item => 'str' in item ? [item.str] : [])
+        expect(text).toEqual(expect.arrayContaining(['Notas', 'Daniel', '15.5', '31', '—', '99']))
+        expect(text.join(' ')).not.toContain('AVERAGE')
+      } finally {
+        await task.destroy()
+      }
     }
     if (extension === 'zip') {
       const jpg = unzipSync(bytes)['aula-01.jpg']

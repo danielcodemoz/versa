@@ -25,7 +25,7 @@ export async function countWords({ files: [file], progress }: Context) {
   const text = await wordText(file)
   const total = [...new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text)].filter(segment => segment.isWordLike).length
   progress(90)
-  return { blob: new Blob([`${total}\n`], { type: 'text/plain;charset=utf-8' }), name: localName(file, 'txt', ' (Versa - palavras)') }
+  return { blob: new Blob([`${total}\n`], { type: 'text/plain;charset=utf-8' }), name: localName(file, 'txt', ' - palavras (Versa)') }
 }
 
 export async function wordPdf({ files: [file], progress }: Context) {
@@ -48,7 +48,7 @@ export async function wordPdf({ files: [file], progress }: Context) {
     await Promise.all(Array.from(container.querySelectorAll('img')).map(image => image.decode().catch(() => {})))
     const pages = children(container, 'section')
     if (!pages.length) throw new Error('Word document has no pages')
-    const pdf = await newPdf(localName(file, 'pdf', ' (Versa)'))
+    const pdf = await newPdf(localName(file, 'pdf'))
     for (const [index, page] of pages.entries()) {
       const bounds = page.getBoundingClientRect()
       const scale = Math.min(1.5, 1785 / bounds.width)

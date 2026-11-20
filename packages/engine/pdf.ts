@@ -14,7 +14,7 @@ export async function zipFiles(files: Record<string, Uint8Array>) {
 }
 
 async function rasterPdf(file: File, password: string | undefined, quality: number, resolution: number, progress: Context['progress']) {
-  const rendered = await openPdf(file, password)
+  const { pdf: rendered, close } = await openPdf(file, password)
   try {
     const document = await PDFDocument.create()
     for (let index = 1; index <= rendered.numPages; index++) {
@@ -33,7 +33,7 @@ async function rasterPdf(file: File, password: string | undefined, quality: numb
     }
     return document
   } finally {
-    await rendered.destroy()
+    await close()
   }
 }
 
@@ -54,7 +54,7 @@ export async function mergePdf({ files, options, progress }: Context) {
     pages.forEach(page => output.addPage(page))
     progress(Math.round((index + 1) / files.length * 90))
   }
-  return pdfOutput(output, localName(files[0], 'pdf', ' (Versa - juntos)'))
+  return pdfOutput(output, localName(files[0], 'pdf', ' - juntos (Versa)'))
 }
 
 export async function splitPdf({ files: [file], options, progress }: Context) {
@@ -67,24 +67,24 @@ export async function splitPdf({ files: [file], options, progress }: Context) {
     parts[localName(file, 'pdf', `-${index + 1}`)] = await output.save()
     progress(Math.round((index + 1) / input.getPageCount() * 85))
   }
-  return { blob: await zipFiles(parts), name: localName(file, 'zip', ' (Versa - paginas)') }
+  return { blob: await zipFiles(parts), name: localName(file, 'zip', ' - paginas (Versa)') }
 }
 
 export async function rotatePdf({ files: [file], options, progress }: Context) {
   const output = await editablePdf(file, options.password)
   for (const page of output.getPages()) page.setRotation(degrees((page.getRotation().angle + (options.rotation ?? 90)) % 360))
   progress(85)
-  return pdfOutput(output, localName(file, 'pdf', ' (Versa - rodado)'))
+  return pdfOutput(output, localName(file, 'pdf', ' - rodado (Versa)'))
 }
 
 export async function compressPdf({ files: [file], options, progress }: Context) {
   const output = await rasterPdf(file, options.password, options.quality ?? .58, 1280, progress)
-  const result = await pdfOutput(output, localName(file, 'pdf', ' (Versa - comprimido)'))
+  const result = await pdfOutput(output, localName(file, 'pdf', ' - comprimido (Versa)'))
   return result.blob.size < file.size || options.password ? result : { ...result, blob: file }
 }
 
 export async function exportPdfImages({ files: [file], options, progress }: Context) {
-  const pdf = await openPdf(file, options.password)
+  const { pdf, close } = await openPdf(file, options.password)
   try {
     const images: Record<string, Uint8Array> = {}
     for (let index = 1; index <= pdf.numPages; index++) {
@@ -100,14 +100,14 @@ export async function exportPdfImages({ files: [file], options, progress }: Cont
       }
       progress(Math.round(index / pdf.numPages * 87))
     }
-    return { blob: await zipFiles(images), name: localName(file, 'zip', ' (Versa - imagens)') }
+    return { blob: await zipFiles(images), name: localName(file, 'zip', ' - imagens (Versa)') }
   } finally {
-    await pdf.destroy()
+    await close()
   }
 }
 
 export async function extractPdfText({ files: [file], options, progress }: Context) {
-  const pdf = await openPdf(file, options.password)
+  const { pdf, close } = await openPdf(file, options.password)
   const pages: string[] = []
   try {
     for (let index = 1; index <= pdf.numPages; index++) {
@@ -119,6 +119,6 @@ export async function extractPdfText({ files: [file], options, progress }: Conte
     }
     return { blob: new Blob([pages.join('\n\n')], { type: 'text/plain;charset=utf-8' }), name: localName(file, 'txt') }
   } finally {
-    await pdf.destroy()
+    await close()
   }
 }

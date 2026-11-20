@@ -30,8 +30,11 @@ export default defineConfig({
       for (const name of ['favicon.svg', 'favicon.ico', 'og-image.png', 'logo-light.svg', 'logo-dark.svg']) {
         copyFileSync(`brand/${name}`, `dist/brand/${name}`)
       }
-      for (const directory of ['cmaps', 'standard_fonts', 'wasm']) {
-        cpSync(`node_modules/pdfjs-dist/${directory}`, `dist/pdfjs/${directory}`, { recursive: true })
+      for (const directory of ['cmaps', 'iccs', 'standard_fonts', 'wasm']) {
+        cpSync(`node_modules/pdfjs-dist/${directory}`, `dist/pdfjs/${directory}`, {
+          recursive: true,
+          filter: source => !source.includes('quickjs-eval.'),
+        })
       }
       if (existsSync('downloads')) {
         mkdirSync('dist/downloads', { recursive: true })

@@ -1,0 +1,1 @@
+var e=(e,t,n=` (Versa)`)=>`${e.name.replace(/\.[^.]+$/,``)}${n}.${t}`;function t(e,t){return new Blob([Uint8Array.from(e).buffer],{type:t})}function n(e,t,n){return new Promise((r,i)=>{e.toBlob(e=>{e?.type===t?r(e):i(Error(`Unsupported encoding: ${t}`))},t,n)})}export{n,e as r,t};

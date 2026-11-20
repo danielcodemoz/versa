@@ -120,8 +120,9 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     if (!settings.hidden) settings.innerHTML = `<details ${wasOpen ? 'open' : ''}><summary>${t(getLanguage(), ['Opções de saída', 'Output options'])}</summary>
       ${category === 'school' ? `
         <label>${t(getLanguage(), ['Nome da escola', 'School name'])} <input type="text" maxlength="100" value="${escape(options.header ?? '')}" placeholder="Escola" data-option="header"></label>
-        <label>${t(getLanguage(), ['Logótipo', 'Logo'])} <input type="file" accept=".png,.jpeg,.jpg,.webp" data-option="logo"></label>
-        <span class="logo-label" role="status">${escape(options.logo?.name ?? '')}</span>
+        <input type="file" accept=".png,.jpeg,.jpg,.webp" data-option="logo" hidden>
+        <button class="quiet logo-picker" type="button" data-logo-picker aria-describedby="logo-status">${t(getLanguage(), ['Escolher logótipo', 'Choose a logo'])}</button>
+        <span class="logo-label" id="logo-status" role="status">${escape(options.logo?.name ?? t(getLanguage(), ['Nenhum ficheiro seleccionado', 'No file selected']))}</span>
       ` : `<label>${t(getLanguage(), ['Qualidade', 'Quality'])} <input type="range" min="20" max="100" value="${Math.round((options.quality ?? (category === 'pdf' ? .58 : .88)) * 100)}" data-option="quality"></label>
       ${category === 'pdf' ? `<label>${t(getLanguage(), ['Rotação', 'Rotation'])} <select data-option="rotation">${[90,180,270].map(value => `<option value="${value}" ${options.rotation === value ? 'selected' : ''}>${value}°</option>`).join('')}</select></label>` : `<label>${t(getLanguage(), ['Dimensão máxima (px)', 'Maximum dimension (px)'])}<input type="number" min="64" max="8192" placeholder="1200" value="${options.maxDimension ?? ''}" data-option="maxDimension"></label>`}`}
       </details>`
@@ -268,6 +269,11 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     render()
   }
 
+  settings.addEventListener('click', event => {
+    if ((event.target as Element).closest('[data-logo-picker]')) {
+      settings.querySelector<HTMLInputElement>('[data-option="logo"]')?.click()
+    }
+  })
   settings.addEventListener('input', event => {
     const input = event.target as HTMLInputElement
     if (input.dataset.option === 'header') options.header = input.value
@@ -278,7 +284,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
       const file = input.files?.[0]
       options.logo = undefined
       const label = settings.querySelector<HTMLElement>('.logo-label')!
-      if (!file) { label.textContent = ''; return }
+      if (!file) { label.textContent = t(getLanguage(), ['Nenhum ficheiro seleccionado', 'No file selected']); return }
       const validation = options
       if (/\.(png|jpe?g|webp)$/i.test(file.name) && file.size <= 8 * 1024 ** 2) {
         void createImageBitmap(file).then(bitmap => {
