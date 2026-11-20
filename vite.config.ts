@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   build: {
     rollupOptions: {
-      input: ["index.html", "desktop.html", "downloads/index.html"],
+      input: ["index.html", "desktop.html", "windows.html"],
       output: {
         // Static hosts (nginx default mime.types) serve .mjs as application/octet-stream,
         // which browsers refuse for module workers. Emit .mjs assets (pdf.js worker) as .js.

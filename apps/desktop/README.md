@@ -20,4 +20,4 @@ Instala Node.js 24, Rust estável com destino `x86_64-pc-windows-msvc`, Microsof
 
 O workflow **Windows installers** compila em `windows-latest`. Os builds de PR e manuais geram o artefacto `versa-windows-x64`. Uma tag com a versão do `tauri.conf.json`, como `v0.1.0`, publica as somas SHA-256, o NSIS `Versa-Setup-0.1.0.exe` e o MSI `Versa-0.1.0-x64.msi` em GitHub Releases.
 
-O NSIS instala para o utilizador actual. A página `/downloads/` encaminha para os instaladores públicos. O repositório guarda a configuração e o site estático.
+O NSIS instala para o utilizador actual. A página `/windows.html` encaminha para os instaladores públicos. O repositório guarda a configuração e o site estático.
