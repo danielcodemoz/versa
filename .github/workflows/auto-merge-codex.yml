@@ -1,0 +1,50 @@
+# Auto-merge de PRs do Codex (Dots) para main neste repo de SITE NOVO.
+# Só faz merge se: ramo codex/..., PR do próprio repo, base main e o repo tem danielpro-site.json.
+# Se o Codex abrir a PR como rascunho (draft), marca-a como pronta e faz o merge.
+# Depois do merge, o servidor (novo-site-auto + novo-site-sync) publica em ~1–3 minutos.
+name: auto-merge-codex
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: >-
+      startsWith(github.event.pull_request.head.ref, 'codex/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar danielpro-site.json e fazer merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/$REPO/contents/danielpro-site.json?ref=$HEAD_SHA" --silent; then
+            echo "Sem danielpro-site.json: não é um repo de site novo; não faço merge."
+            exit 0
+          fi
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "PR em rascunho: a marcar como pronta."
+            gh pr ready "$PR" -R "$REPO"
+          fi
+          for i in 1 2 3 4 5 6; do
+            if gh pr merge "$PR" -R "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
+              echo "Merge feito. O servidor publica em ~1–3 minutos."; exit 0
+            fi
+            echo "Merge ainda não possível (tentativa $i); a aguardar..."; sleep 10
+          done
+          echo "Não consegui fazer merge (conflito ou commit novo?)."; exit 1
