@@ -249,7 +249,7 @@ footer p a{font-weight:800}
   .wheel-note,.note-arrow{display:none}
 }
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
   .category-card:hover .card-rotator,.category-card:focus-visible .card-rotator{transition:none}
   .explorer-result,.explorer-wheel{opacity:1}
 }
@@ -261,3 +261,24 @@ footer p a{font-weight:800}
 .wheel-settings input[type=text]{max-width:150px}
 .wheel-settings .logo-label{font-size:.72rem;margin-left:5px;overflow-wrap:anywhere}
 .versa-docx, .versa-docx *{color-scheme:light}
+.desktop .hero{min-height:0;display:block}
+.desktop .masthead .shell{width:min(100% - 30px,590px)}
+.desktop .hero .native-settings{display:block;width:min(100% - 30px,590px);padding:14px 0 24px;font-size:.87rem}
+.native-settings h2{font-size:1.32rem;margin-top:12px}
+.native-settings details{border-block:1px solid var(--grid);padding:8px 0}
+.native-settings summary{cursor:pointer;font-weight:800}
+.native-settings label{padding:7px 7px 3px 0;display:inline-flex;align-items:center}
+.native-settings ul{margin:6px 0 0;padding-left:1.15rem}
+.native-settings li button{margin-right:9px}
+.gesture,.gesture body,.gesture .hero{background:transparent}
+.gesture .masthead{display:none}
+.gesture .hero-grid{width:100%;height:100svh;padding:0;display:grid;place-items:center}
+.gesture .lab,.gesture .lab.is-dragging{width:100%;height:100%;display:grid;place-items:center;padding:0;border:0;box-shadow:none;background:none;animation:none}
+.gesture .lab::before,.gesture .lab::after,.gesture .lab-heading,.gesture .wheel-note,.gesture .note-arrow,.gesture .wheel-spark,.gesture .wheel-controls,.gesture .wheel-back,.gesture .native-settings{display:none}
+.gesture .wheel-stage{width:min(100vw - 18px, 100svh - 60px,450px);border-radius:50%;background:color-mix(in srgb,var(--panel) 63%,transparent);backdrop-filter:blur(12px)}
+.gesture .wheel{width:100%}
+.gesture-close{position:absolute;right:13px;top:12px;z-index:7}
+.gesture .wheel-status,.gesture .wheel-settings,.gesture .wheel-message{position:absolute;z-index:4;bottom:6px;max-width:90%;width:max-content;background:var(--surface);padding:5px 8px;border-radius:5px}
+.gesture .wheel-message{bottom:24px}
+.gesture .wheel-settings{bottom:23px}
+.gesture .lab:has(.wheel-message:not([hidden])) .wheel-settings,.native-app [data-example]{display:none}

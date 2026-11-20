@@ -13,7 +13,8 @@ const stored = (key: string) => {
 const persist = (key: string, value: string) => {
   try { localStorage.setItem(key, value) } catch { /* Private browsing. */ }
 }
-const desktop = new URLSearchParams(location.search).has('desktop')
+const desktop = new URLSearchParams(location.search).get('desktop')
+const overlay = desktop === 'gesture'
 let language: Language = stored('versa-language') === 'en' ? 'en' : 'pt'
 let theme = stored('versa-theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 const local = (key: keyof typeof copy) => t(language, copy[key])
@@ -54,6 +55,7 @@ app.innerHTML = `
           <p class="download-info" data-copy="downloadInfo">${local('downloadInfo')}</p>
         </div>
         <section class="lab" id="roda" tabindex="-1" aria-labelledby="wheel-title">
+          ${overlay ? `<button class="switch gesture-close" type="button" data-dismiss aria-label="${t(language, ['Fechar a roda', 'Close wheel'])}">${icon('close', 19)}</button>` : ''}
           <div class="lab-heading">
             <h2 id="wheel-title" data-copy="wheel">${local('wheel')}</h2>
             <span class="lab-tag"><i></i>${label('demo')}</span>
@@ -79,6 +81,7 @@ app.innerHTML = `
           <div class="wheel-message" hidden></div>
         </section>
       </div>
+      ${desktop ? '<section class="native-settings shell" hidden></section>' : ''}
       <div class="shell hero-bottom"><span>${icon('lock', 15)} ${label('bytes')}</span><a href="#categorias">${label('categories')} ${icon('down', 15)}</a></div>
     </section>
     <section class="band shell" id="categorias">
@@ -213,7 +216,13 @@ function animateWindows() {
   Array.from(windowsList.children).forEach((item, index) => item.classList.toggle('current', index === step))
 }
 if (!desktop) setInterval(animateWindows, 1800)
-if (desktop) document.documentElement.classList.add('desktop')
+if (desktop !== null) {
+  document.documentElement.classList.add('desktop')
+  if (overlay) document.documentElement.classList.add('gesture')
+  void import('./native').then(({ mountNative }) => mountNative(wheel, () => language, overlay)).catch(() => {
+    if ('__TAURI_INTERNALS__' in window) wheel.report(t(language, ['A ligação com Windows falhou.', 'Could not connect to Windows.']))
+  })
+}
 renderTheme()
 renderLanguage()
 animateWindows()

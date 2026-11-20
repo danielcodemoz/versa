@@ -1,7 +1,7 @@
 import { available, categories, categoryFor, kindFromName, recipes, t, type Category, type Kind, type Language, type Recipe } from '../packages/engine/catalog'
 import { copy } from './copy'
 import { icon } from './icons'
-import { inspectFiles, type Problem } from '../packages/engine/preflight'
+import { inspectFiles, type Preflight, type Problem } from '../packages/engine/preflight'
 import { canRun, convert, type ConversionResult } from './conversion'
 import type { Options } from '../packages/engine'
 import { samplePdf } from './sample'
@@ -16,6 +16,13 @@ const wedge = (outer: number, inner: number, start: number, end: number) =>
 const escape = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 const fileDrag = (event: DragEvent) => event.dataTransfer?.types.includes('Files')
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+type NativeResult = { name: string; open: (reveal: boolean) => Promise<void> }
+interface NativeSource {
+  activity: (active: boolean) => Promise<void>
+  idle: () => Promise<void>
+  office: (recipe: Recipe, files: File[]) => Promise<ConversionResult | undefined>
+  save: (result: ConversionResult) => Promise<NativeResult>
+}
 type Slice = { id: string; category: Category; name: string; recipe?: Recipe; disabled: boolean; reason?: string }
 
 export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
@@ -44,7 +51,16 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   let dragging = false
   let percent: number | undefined
   let token = 0
-  let result: (ConversionResult & { url: string; before: number }) | undefined
+  let nativeSource: NativeSource | undefined
+  let nativePicker: (() => Promise<void>) | undefined
+  let dismiss: (() => Promise<void>) | undefined
+  let nativeHover: ReturnType<typeof setTimeout> | undefined
+  let lastNativeHover: string | undefined
+  let dragProblem: Problem | undefined
+  let dragVerified = false
+  let result: (ConversionResult & { url: string; before: number; native?: NativeResult }) | undefined
+  const chooseFile = () => nativePicker ? void nativePicker() : fileInput.click()
+  const visibleProblem = () => dragging ? dragProblem : problem
 
   const local = (key: keyof typeof copy) => t(getLanguage(), copy[key])
   function setActive(id?: string) {
@@ -65,8 +81,8 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     const fileLabel = files.length > 1 ? `${files.length} ${local('files')}` : files[0]?.name
     if (percent !== undefined) {
       centre.innerHTML = `<span class="progress-track" style="--progress:${percent}%"></span><strong>${percent}%</strong><small>${local('progress')}</small>`
-    } else if (checking || problem || dragging && !current) {
-      centre.innerHTML = `${icon(problem ? 'lock' : 'file', 28)}<strong>${local(checking ? 'verifying' : problem ? 'locked' : 'drop')}</strong>`
+    } else if (checking || visibleProblem() || dragging && !current) {
+      centre.innerHTML = `${icon(visibleProblem() ? 'lock' : 'file', 28)}<strong>${local(checking ? 'verifying' : visibleProblem() ? 'locked' : 'drop')}</strong>`
     } else if (current) {
       const label = action && !current.disabled ? `${[...new Set(action.inputs.map(kind => kind.toUpperCase()))].length === 1 ? action.inputs[0].toUpperCase() : t(getLanguage(), categoryFor(current.category).name)} → ${action.output}` : current.name
       const destination = action ? ({ PDF: 'pdf', DOCX: 'docs', JPG: 'image', PNG: 'image', AVIF: 'image', WEBP: 'image' }[action.output] ?? 'file') : current.category
@@ -80,8 +96,9 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
 
   function render() {
     const detected = dragging ? dragKinds : kinds
-    const locked = Boolean(problem || checking || percent !== undefined)
-    const disabledReason = (candidates: Recipe[]) => problem ? local(problem) : checking ? local('verifying')
+    const issue = visibleProblem()
+    const locked = Boolean(issue || checking || percent !== undefined)
+    const disabledReason = (candidates: Recipe[]) => issue ? local(issue) : checking ? local('verifying')
       : candidates.some(candidate => canRun(candidate) && available(candidate, detected)) ? undefined
       : candidates.some(canRun) ? local('wrong') : t(getLanguage(), ['Disponível em breve.', 'Coming soon.'])
     slices = category ? recipes.filter(recipe => recipe.category === category).map(recipe => {
@@ -129,9 +146,9 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     control.hidden = !category && !files.length
     control.innerHTML = `${icon(category ? 'arrow' : 'close', 14)} ${local(category ? 'back' : 'close')}`
     control.classList.toggle('is-back', Boolean(category))
-    status.textContent = problem ? local(problem) : checking ? local('verifying') : dragging ? local('drop') : files.length ? local('ready') : ''
-    message.hidden = !problem && !result
-    if (problem) {
+    status.textContent = issue ? local(issue) : checking ? local('verifying') : dragging ? local(dragVerified ? 'ready' : 'drop') : files.length ? local('ready') : ''
+    message.hidden = !problem && !result || dragging
+    if (problem && !dragging) {
       message.innerHTML = `<p>${icon('lock', 18)} ${local(problem)}</p>${(problem === 'password' || problem === 'wrong-password') ? `<form><label>${local('passwordLabel')} <input type="password" required autocomplete="off"></label><button type="submit">${local('unlock')}</button><p role="status"></p></form>` : ''}`
       message.querySelector('form')?.addEventListener('submit', event => {
         event.preventDefault()
@@ -145,11 +162,23 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
       const units = new Intl.NumberFormat(getLanguage(), { style: 'unit', unit: 'kilobyte', maximumFractionDigits: 2 })
       message.innerHTML = `<strong>${escape(result.name)}</strong>
         <p>${local('before')} ${units.format(result.before / 1000)} · ${local('after')} ${units.format(result.blob.size / 1000)}</p>
-        <div><a class="button button-small" href="${result.url}" download="${escape(result.name)}">${icon('down', 16)} ${local('save')}</a>
+        <div>${result.native ? `<button class="button button-small" type="button" data-open>${t(getLanguage(), ['Abrir', 'Open'])}</button>
+        <button class="quiet" type="button" data-reveal>${t(getLanguage(), ['Mostrar na pasta', 'Show in folder'])}</button>` :
+        `<a class="button button-small" href="${result.url}" download="${escape(result.name)}">${icon('down', 16)} ${local('save')}</a>`}
         <button class="quiet" type="button" data-reset>${local('reset')}</button></div>`
+      const openResult = (reveal: boolean) => void result?.native?.open(reveal).catch(() => {
+        status.textContent = t(getLanguage(), ['Ficheiro indisponível.', 'File unavailable.'])
+      })
+      message.querySelector('[data-open]')?.addEventListener('click', () => openResult(false))
+      message.querySelector('[data-reveal]')?.addEventListener('click', () => openResult(true))
       message.querySelector('[data-reset]')?.addEventListener('click', () => {
+        const source = nativeSource
         reset()
-        pick.focus()
+        if (root.querySelector('[data-dismiss]')) void dismiss?.()
+        else {
+          pick.focus()
+          void source?.idle().catch(() => {})
+        }
       })
     }
     const previous = active
@@ -163,7 +192,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     result = undefined
   }
 
-  async function stage(next: File[], recipe?: Recipe, password?: string) {
+  async function stage(next: File[], recipe?: Recipe, password?: string, preflight?: Preflight) {
     if (!next.length || percent !== undefined) return
     const generation = ++token
     clearResult()
@@ -173,7 +202,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     checking = true
     render()
     options = { ...options, password }
-    const verdict = await inspectFiles(next, password)
+    const verdict = preflight ?? await inspectFiles(next, password)
     if (generation !== token) return
     checking = false
     kinds = verdict.kinds
@@ -186,6 +215,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   function reset() {
     ++token
     clearResult()
+    nativeSource = undefined
     files = []
     kinds = []
     problem = undefined
@@ -217,16 +247,20 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
       await suction.animate([{ transform: 'translate(60px,-54px) rotate(-20deg)' }, { transform: 'translate(0,0) scale(.1)', opacity: 0 }], { duration: 420, easing: 'cubic-bezier(.5,0,.85,.3)' }).finished
       suction.remove()
     }
+    const native = nativeSource
     try {
+      await native?.activity(true)
       const before = files.reduce((sum, file) => sum + file.size, 0)
-      const output = await convert(recipe, files, options, value => {
-        percent = value
+      const output = await native?.office(recipe, files) ?? await convert(recipe, files, options, value => {
+        percent = native ? Math.min(96, value) : value
         renderCentre()
       })
+      if (native) { percent = 96; renderCentre() }
+      const saved = await native?.save(output)
       percent = 100
       renderCentre()
       await frame()
-      result = { ...output, before, url: URL.createObjectURL(output.blob) }
+      result = { ...output, name: saved?.name ?? output.name, before, url: saved ? '' : URL.createObjectURL(output.blob), native: saved }
       if (!reduce.matches) {
         const burst = document.createElement('div')
         burst.className = 'confetti'
@@ -241,11 +275,19 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
       const description = error instanceof Error ? error.message : ''
       status.textContent = t(getLanguage(), ['Não foi possível preparar o resultado.', 'Could not prepare the result.']) + (description ? ` ${description}` : '')
       return
+    } finally {
+      void native?.activity(false).catch(() => {})
     }
     percent = undefined
     render()
     status.textContent = local('done')
-    message.querySelector('a')?.focus({ preventScroll: true })
+    if (native) {
+      const completed = result
+      setTimeout(() => {
+        if (result === completed && percent === undefined) void native.idle().catch(() => {})
+      }, 3200)
+    }
+    message.querySelector<HTMLElement>('a, [data-open]')?.focus({ preventScroll: true })
   }
 
   function choose(id: string) {
@@ -253,7 +295,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     if (!slice || slice.disabled) return
     if (!slice.recipe) openCategory(slice.category)
     else if (files.length) void run(slice.recipe)
-    else fileInput.click()
+    else chooseFile()
   }
   function hit(target: EventTarget | null) {
     return target instanceof Element ? (target.closest<HTMLElement | SVGElement>('[data-hit], [data-slice]')?.dataset.hit ?? target.closest<HTMLElement>('[data-slice]')?.dataset.slice) : undefined
@@ -263,6 +305,10 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     dragging = false
     dragDepth = 0
     dragKinds = []
+    dragProblem = undefined
+    dragVerified = false
+    clearTimeout(nativeHover)
+    lastNativeHover = undefined
     overlay.classList.remove('visible')
     root.classList.remove('is-dragging')
     active = undefined
@@ -310,8 +356,9 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     const id = hit(event.target)
     if (id) choose(id)
   })
-  pick.addEventListener('click', () => fileInput.click())
-  centre.addEventListener('click', () => fileInput.click())
+  pick.addEventListener('click', chooseFile)
+  centre.addEventListener('click', chooseFile)
+  root.querySelector('[data-dismiss]')?.addEventListener('click', () => void dismiss?.())
   root.querySelector('[data-example]')!.addEventListener('click', () => void stage([samplePdf()]))
   control.addEventListener('click', () => {
     if (category) {
@@ -333,6 +380,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     if (event.key !== 'Escape') return
     if (dragging) endDrag()
     else if (category) control.click()
+    else if (percent === undefined) void dismiss?.()
   })
   window.addEventListener('dragenter', event => {
     if (!fileDrag(event)) return
@@ -369,8 +417,76 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     endDrag()
     if (!next.length || percent !== undefined) return
     if (target) openCategory(target.category, false)
+    nativeSource = undefined
     void stage(next, target?.recipe)
   })
+  function nativeTarget(x: number, y: number) {
+    return slices.find(slice => slice.id === hit(document.elementFromPoint(x, y)))
+  }
+
+  function nativeOver(x: number, y: number) {
+    if (!dragging) return
+    const target = nativeTarget(x, y)
+    setActive(target?.id)
+    if (target?.id === lastNativeHover) return
+    lastNativeHover = target?.id
+    clearTimeout(nativeHover)
+    if (target && !target.recipe && !target.disabled) {
+      nativeHover = setTimeout(() => {
+        if (dragging && lastNativeHover === target.id && !dragProblem) {
+          openCategory(target.category, false)
+          setActive(nativeTarget(x, y)?.id)
+        }
+      }, 430)
+    }
+  }
+
   render()
-  return { render, openCategory }
+  return {
+    render, openCategory, reset,
+    nativeOver, nativeTarget,
+    nativeLeave: endDrag,
+    nativeEnter(hints: Kind[], x: number, y: number, issue?: Problem) {
+      if (percent !== undefined) return
+      dragging = true
+      dragKinds = hints
+      dragProblem = issue
+      dragVerified = false
+      root.classList.add('is-dragging')
+      render()
+      nativeOver(x, y)
+    },
+    nativeInspect(verdict: Preflight) {
+      if (!dragging) return
+      dragKinds = verdict.kinds
+      dragProblem = verdict.problem
+      dragVerified = !verdict.problem
+      render()
+    },
+    nativeReading() {
+      endDrag()
+      if (percent !== undefined) return
+      problem = undefined
+      clearResult()
+      checking = true
+      render()
+    },
+    async stageNative(next: File[], source: NativeSource, verdict: Preflight, target?: Slice) {
+      if (percent !== undefined) return
+      nativeSource = source
+      if (target && !target.disabled) openCategory(target.category, false)
+      const recipe = target?.recipe ?? (target ? recipes.find(recipe => recipe.category === target.category && canRun(recipe) && available(recipe, verdict.kinds)) : undefined)
+      await stage(next, target?.disabled ? undefined : recipe, undefined, verdict)
+    },
+    lock(reason: Problem) {
+      endDrag()
+      if (percent !== undefined) return
+      reset()
+      problem = reason
+      render()
+    },
+    setPicker(handler: () => Promise<void>) { nativePicker = handler },
+    setDismiss(handler: () => Promise<void>) { dismiss = handler },
+    report(description: string) { status.textContent = description },
+  }
 }
