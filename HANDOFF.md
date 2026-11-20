@@ -2,6 +2,8 @@
 
 Produto novo. Trabalha **apenas em ramos `codex/...`** e abre o PR para `main`. Não faças push directo para `main`, não faças force push, e não mexas noutros repositórios. O subdomínio já está definido em `danielpro-site.json` (`versa` → https://versa.danielpro.dev). **Não o mudes.**
 
+Brief completo: docs/BRIEF.md; identidade escolhida: brand/caderno-rebelde
+
 ## O que é
 
 **Versa** é um conversor de documentos **grátis e só local**: os ficheiros nunca saem do dispositivo. Público: escolas, professores e estudantes. Língua por defeito: português de Moçambique, com inglês (EN).
