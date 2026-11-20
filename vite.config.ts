@@ -3,6 +3,15 @@ import { gzipSync } from 'node:zlib'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        // Static hosts (nginx default mime.types) serve .mjs as application/octet-stream,
+        // which browsers refuse for module workers. Emit .mjs assets (pdf.js worker) as .js.
+        assetFileNames: asset => (asset.names?.[0] ?? asset.name ?? '').endsWith('.mjs') ? 'assets/[name]-[hash].js' : 'assets/[name]-[hash][extname]',
+      },
+    },
+  },
   plugins: [{
     name: 'versa-brand',
     enforce: 'pre',
