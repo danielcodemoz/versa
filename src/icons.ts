@@ -1,0 +1,21 @@
+const paths: Record<string,string> = {
+  pdf: '<path d="M5 2h9l5 5v15H5zM14 2v6h5M8 12h8M8 16h6"/>',
+  docs: '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="m7 8 2 8 3-5 3 5 2-8"/>',
+  image: '<rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="15.5" cy="8.5" r="2"/><path d="m3 17 5-5 5 5 3-3 5 5"/>',
+  slides: '<rect x="2" y="3" width="20" height="13" rx="1"/><path d="M12 16v3m-4 3 4-3 4 3M7 12V9m5 3V7m5 5v-2"/>',
+  school: '<path d="M2 9 12 4l10 5-10 5zM6 11v6q6 5 12 0v-6m4-2v7"/>',
+  tools: '<path d="M4 6h16M4 12h16M4 18h16"/><rect x="7" y="4" width="4" height="4" fill="var(--icon-fill, #b598ff)"/><rect x="14" y="10" width="4" height="4" fill="var(--icon-fill, #b598ff)"/><rect x="8" y="16" width="4" height="4" fill="var(--icon-fill, #b598ff)"/>',
+  file: '<path d="M6 2h8l4 4v16H6zM14 2v5h4m-8 5h4m-4 4h4"/>',
+  arrow: '<path d="M4 12h15m-6-6 6 6-6 6"/>',
+  down: '<path d="M12 4v15m-6-6 6 6 6-6"/>',
+  upload: '<path d="M12 16V3M7 8l5-5 5 5M4 15v5h16v-5"/>',
+  windows: '<path fill="currentColor" stroke="none" d="M2 3h9v8H2zm11 0h9v8h-9zM2 13h9v8H2zm11 0h9v8h-9z"/>',
+  moon: '<path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',
+  lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3m-4 4v3"/>',
+  check: '<path d="m5 12 5 5L20 7"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  spark: '<path d="M12 1v22M1 12h22m-18-7 14 14m0-14L5 19"/>',
+}
+export const icon = (name: string, size = 24) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] ?? paths.file}</svg>`

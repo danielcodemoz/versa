@@ -31,3 +31,7 @@ O Daniel autoriza-te a construir e **publicar** este site do início ao fim, sem
 ## Reportar no fim
 Link do site, último commit publicado (`git rev-parse --short HEAD` em main), URL do PR, páginas/secções,
 o que verificaste (saída do curl) e o que ficou por fazer.
+
+## Desenvolvimento local
+
+Instala com `npm ci`, lança com `npm run dev` e verifica com `npm run build` e `npm test`. Para o Playwright, instala o Chromium com `npx playwright install chromium` ou define `CHROMIUM_PATH` para uma instalação existente. Faz commit do `dist/` gerado, que é a pasta servida pelo Danielpro.
