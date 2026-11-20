@@ -282,3 +282,15 @@ footer p a{font-weight:800}
 .gesture .wheel-message{bottom:24px}
 .gesture .wheel-settings{bottom:23px}
 .gesture .lab:has(.wheel-message:not([hidden])) .wheel-settings,.native-app [data-example]{display:none}
+.download-hero{padding-block:40px}
+.release-sheet{width:min(720px,calc(100% - 40px));margin-block:auto;padding:clamp(18px,5vw,54px);
+  border:2px solid var(--ink);border-radius:10px;background:var(--panel);box-shadow:8px 8px 0 var(--heavy)}
+.release-heading{display:flex;align-items:center;gap:clamp(12px,3vw,32px);margin:25px 0}
+.release-heading h1{font-size:clamp(2.55rem,6.5vw,5.45rem);line-height:.94}
+.release-heading .kicker{margin:10px 0 0}
+.release-icon{display:grid;place-items:center;flex:none;width:clamp(50px,9vw,77px);aspect-ratio:1;
+  background:var(--marker);color:#1a1a2e;border:2px solid #1a1a2e;border-radius:7px;box-shadow:4px 4px 0 var(--heavy);rotate:-7deg}
+.release-icon svg{width:62%}
+.release-back svg{rotate:180deg}
+.release-actions{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0 15px}
+.release-formats{font-size:.84rem;color:var(--muted)}

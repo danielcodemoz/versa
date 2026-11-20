@@ -1,11 +1,11 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
   build: {
     rollupOptions: {
-      input: ["index.html", "desktop.html"],
+      input: ["index.html", "desktop.html", "downloads/index.html"],
       output: {
         // Static hosts (nginx default mime.types) serve .mjs as application/octet-stream,
         // which browsers refuse for module workers. Emit .mjs assets (pdf.js worker) as .js.
@@ -36,10 +36,6 @@ export default defineConfig({
           recursive: true,
           filter: source => !source.includes('quickjs-eval.'),
         })
-      }
-      if (existsSync('downloads')) {
-        mkdirSync('dist/downloads', { recursive: true })
-        copyFileSync('downloads/index.html', 'dist/downloads/index.html')
       }
     },
   }],

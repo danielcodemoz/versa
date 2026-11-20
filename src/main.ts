@@ -49,7 +49,7 @@ app.innerHTML = `
           <p class="tagline" data-copy="tag">${local('tag')}</p>
           <p class="hero-description" data-copy="description">${local('description')}</p>
           <div class="hero-actions">
-            <a class="button download" href="#windows">${icon('windows', 20)} ${label('download')}</a>
+            <a class="button download" href="/downloads/">${icon('windows', 20)} ${label('download')}</a>
             <a class="text-link" href="#roda">${label('browser')} ${icon('down', 16)}</a>
           </div>
           <p class="download-info" data-copy="downloadInfo">${local('downloadInfo')}</p>
