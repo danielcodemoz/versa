@@ -1,3 +1,5 @@
+import type { Handler } from './types'
+
 export type Language = 'pt' | 'en'
 export type Phrase = readonly [string, string]
 export type Kind = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'jpg' | 'png' | 'webp' | 'avif'
@@ -18,40 +20,41 @@ export interface Recipe {
   output: string
   multiple?: boolean
   min?: number
+  load?: () => Promise<Handler>
 }
 const images = ['jpg', 'png', 'webp', 'avif'] as const
 const pdf = ['pdf'] as const
 export const recipes: Recipe[] = [
-  { id: 'pdf-word', category: 'pdf', name: ['Para Word', 'To Word'], inputs: pdf, output: 'DOCX' },
-  { id: 'pdf-jpg', category: 'pdf', name: ['Para JPG', 'To JPG'], inputs: pdf, output: 'JPG' },
-  { id: 'pdf-text', category: 'pdf', name: ['Para texto', 'To text'], inputs: pdf, output: 'TXT' },
-  { id: 'pdf-merge', category: 'pdf', name: ['Juntar', 'Merge'], inputs: pdf, output: 'PDF', multiple: true, min: 2 },
-  { id: 'pdf-split', category: 'pdf', name: ['Dividir', 'Split'], inputs: pdf, output: 'PDF' },
-  { id: 'pdf-compress', category: 'pdf', name: ['Comprimir', 'Compress'], inputs: pdf, output: 'PDF' },
-  { id: 'pdf-rotate', category: 'pdf', name: ['Girar', 'Rotate'], inputs: pdf, output: 'PDF' },
+  { id: 'pdf-word', category: 'pdf', name: ['Para Word', 'To Word'], inputs: pdf, output: 'DOCX', load: () => import('./pdf-word').then(module => module.pdfWord) },
+  { id: 'pdf-jpg', category: 'pdf', name: ['Para JPG', 'To JPG'], inputs: pdf, output: 'JPG', load: () => import('./pdf').then(module => module.exportPdfImages) },
+  { id: 'pdf-text', category: 'pdf', name: ['Para texto', 'To text'], inputs: pdf, output: 'TXT', load: () => import('./pdf').then(module => module.extractPdfText) },
+  { id: 'pdf-merge', category: 'pdf', name: ['Juntar', 'Merge'], inputs: pdf, output: 'PDF', multiple: true, min: 2, load: () => import('./pdf').then(module => module.mergePdf) },
+  { id: 'pdf-split', category: 'pdf', name: ['Dividir', 'Split'], inputs: pdf, output: 'PDF', load: () => import('./pdf').then(module => module.splitPdf) },
+  { id: 'pdf-compress', category: 'pdf', name: ['Comprimir', 'Compress'], inputs: pdf, output: 'PDF', load: () => import('./pdf').then(module => module.compressPdf) },
+  { id: 'pdf-rotate', category: 'pdf', name: ['Girar', 'Rotate'], inputs: pdf, output: 'PDF', load: () => import('./pdf').then(module => module.rotatePdf) },
   { id: 'word-pdf', category: 'docs', name: ['Word → PDF', 'Word → PDF'], inputs: ['docx'], output: 'PDF' },
   { id: 'excel-pdf', category: 'docs', name: ['Excel → PDF', 'Excel → PDF'], inputs: ['xlsx'], output: 'PDF' },
   { id: 'word-text', category: 'docs', name: ['Extrair texto', 'Extract text'], inputs: ['docx'], output: 'TXT' },
   { id: 'word-count', category: 'docs', name: ['Contar palavras', 'Word count'], inputs: ['docx'], output: 'TXT' },
-  { id: 'image-pdf', category: 'image', name: ['Para PDF', 'To PDF'], inputs: images, output: 'PDF', multiple: true },
-  { id: 'image-jpg', category: 'image', name: ['Para JPG', 'To JPG'], inputs: images, output: 'JPG' },
-  { id: 'image-png', category: 'image', name: ['Para PNG', 'To PNG'], inputs: images, output: 'PNG' },
-  { id: 'image-webp', category: 'image', name: ['Para WebP', 'To WebP'], inputs: images, output: 'WEBP' },
-  { id: 'image-avif', category: 'image', name: ['Para AVIF', 'To AVIF'], inputs: images, output: 'AVIF' },
+  { id: 'image-pdf', category: 'image', name: ['Para PDF', 'To PDF'], inputs: images, output: 'PDF', multiple: true, load: () => import('./image').then(module => module.imagesPdf) },
+  { id: 'image-jpg', category: 'image', name: ['Para JPG', 'To JPG'], inputs: images, output: 'JPG', load: () => import('./image').then(module => module.encodeImage('jpg')) },
+  { id: 'image-png', category: 'image', name: ['Para PNG', 'To PNG'], inputs: images, output: 'PNG', load: () => import('./image').then(module => module.encodeImage('png')) },
+  { id: 'image-webp', category: 'image', name: ['Para WebP', 'To WebP'], inputs: images, output: 'WEBP', load: () => import('./image').then(module => module.encodeImage('webp')) },
+  { id: 'image-avif', category: 'image', name: ['Para AVIF', 'To AVIF'], inputs: images, output: 'AVIF', load: () => import('./image').then(module => module.encodeImage('avif')) },
   { id: 'slides-pdf', category: 'slides', name: ['Para PDF', 'To PDF'], inputs: ['pptx'], output: 'PDF' },
   { id: 'slides-img', category: 'slides', name: ['Para imagens', 'To images'], inputs: ['pptx'], output: 'JPG' },
   { id: 'school-header', category: 'school', name: ['Cabeçalho', 'Header'], inputs: pdf, output: 'PDF' },
   { id: 'school-scan', category: 'school', name: ['Fotos → PDF', 'Photos → PDF'], inputs: images, output: 'PDF', multiple: true },
   { id: 'school-a4', category: 'school', name: ['2 por A4', '2 per A4'], inputs: pdf, output: 'PDF' },
   { id: 'school-merge', category: 'school', name: ['Juntar testes', 'Merge tests'], inputs: pdf, output: 'PDF', multiple: true, min: 2 },
-  { id: 'image-compress', category: 'tools', name: ['Reduzir imagem', 'Compress image'], inputs: images, output: 'JPG' },
-  { id: 'image-resize', category: 'tools', name: ['Redimensionar', 'Resize'], inputs: images, output: 'PNG' },
+  { id: 'image-compress', category: 'tools', name: ['Reduzir imagem', 'Compress image'], inputs: images, output: 'JPG', load: () => import('./image').then(module => module.encodeImage('jpg', 1600, .66)) },
+  { id: 'image-resize', category: 'tools', name: ['Redimensionar', 'Resize'], inputs: images, output: 'PNG', load: () => import('./image').then(module => module.encodeImage('png', 1200)) },
 ]
 export const t = (language: Language, message: Phrase) => message[language === 'pt' ? 0 : 1]
 export const categoryFor = (id: Category) => categories.find(category => category.id === id)!
 export const available = (recipe: Recipe, kinds: readonly Kind[]) =>
   !kinds.length || (kinds.length >= (recipe.min ?? 1) && (kinds.length === 1 || recipe.multiple) && kinds.every(kind => recipe.inputs.includes(kind)))
 export const kindFromName = (name: string): Kind | undefined => {
-  const extension = name.split('.').at(-1)?.toLowerCase().replace(/^jpeg$/, 'jpg')
+  const extension = name.includes('.') ? name.split('.').at(-1)?.toLowerCase().replace(/^jpeg$/, 'jpg') : undefined
   return ['pdf', 'docx', 'xlsx', 'pptx', ...images].find(kind => kind === extension) as Kind | undefined
 }

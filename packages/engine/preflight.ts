@@ -1,10 +1,10 @@
 import { kindFromName, type Kind } from './catalog'
 
-export type Problem = 'empty' | 'large' | 'type' | 'damaged' | 'password'
+export type Problem = 'empty' | 'large' | 'type' | 'damaged' | 'password' | 'wrong-password'
 export interface Preflight { kinds: Kind[]; problem?: Problem }
 const decode = (data: Uint8Array) => new TextDecoder('latin1').decode(data)
 
-export async function inspectFiles(files: File[]): Promise<Preflight> {
+export async function inspectFiles(files: File[], password?: string): Promise<Preflight> {
   const kinds: Kind[] = []
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4
   const limit = Math.min(memory * 48, 192) * 1024 ** 2
@@ -18,8 +18,10 @@ export async function inspectFiles(files: File[]): Promise<Preflight> {
       const header = decode(head)
       const tail = decode(new Uint8Array(await file.slice(-65557).arrayBuffer()))
       if (kind === 'pdf') {
-        if (!/%PDF-\d\.\d/.test(header) || !/startxref\s+\d+[\s\S]*%%EOF/.test(tail)) return { kinds, problem: 'damaged' }
-        if (/\/Encrypt\b/.test(tail)) return { kinds, problem: 'password' }
+        if (!/%PDF-\d\.\d/.test(header)) return { kinds, problem: 'damaged' }
+        const { checkPdf } = await import('./render-pdf')
+        const problem = await checkPdf(file, password)
+        if (problem) return { kinds, problem }
       } else if (kind === 'docx' || kind === 'xlsx' || kind === 'pptx') {
         if (head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) return { kinds, problem: 'password' }
         const signature = tail.lastIndexOf('PK\x05\x06')

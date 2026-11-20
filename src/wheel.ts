@@ -1,8 +1,9 @@
-import { available, categories, categoryFor, kindFromName, recipes, t, type Category, type Kind, type Language, type Recipe } from './catalog'
+import { available, categories, categoryFor, kindFromName, recipes, t, type Category, type Kind, type Language, type Recipe } from '../packages/engine/catalog'
 import { copy } from './copy'
 import { icon } from './icons'
-import { inspectFiles, type Problem } from './preflight'
+import { inspectFiles, type Problem } from '../packages/engine/preflight'
 import { canRun, convert, type ConversionResult } from './conversion'
+import type { Options } from '../packages/engine'
 import { samplePdf } from './sample'
 
 const polar = (radius: number, degrees: number) => {
@@ -26,6 +27,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   const status = root.querySelector<HTMLElement>('.wheel-status')!
   const message = root.querySelector<HTMLElement>('.wheel-message')!
   const pick = root.querySelector<HTMLButtonElement>('[data-pick]')!
+  const settings = root.querySelector<HTMLElement>('.wheel-settings')!
   const control = root.querySelector<HTMLButtonElement>('[data-back]')!
   const overlay = document.querySelector<HTMLElement>('.drag-shade')!
   const reduce = matchMedia('(prefers-reduced-motion: reduce)')
@@ -35,6 +37,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   let files: File[] = []
   let kinds: Kind[] = []
   let problem: Problem | undefined
+  let options: Options = {}
   let checking = false
   let dragDepth = 0
   let dragKinds: Kind[] = []
@@ -69,7 +72,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
       const destination = action ? ({ PDF: 'pdf', DOCX: 'docs', JPG: 'image', PNG: 'image', AVIF: 'image', WEBP: 'image' }[action.output] ?? 'file') : current.category
       centre.innerHTML = `${icon(current.disabled ? 'lock' : destination, 26)}<strong>${escape(current.name)}</strong><small>${escape(current.disabled ? local('locked') : label)}</small>`
     } else if (result) {
-      centre.innerHTML = `${icon('check', 29)}<strong>${result.demo ? local('done') : t(getLanguage(), ['Concluído', 'Done'])}</strong>`
+      centre.innerHTML = `${icon('check', 29)}<strong>${local('done')}</strong>`
     } else {
       centre.innerHTML = `${icon('file', 31)}<strong>${escape(fileLabel ?? local('wheelHint'))}</strong><small>${local(category ? 'chooseAction' : files.length ? 'select' : 'pick')}</small>`
     }
@@ -111,25 +114,32 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     }).join('')
     wheel.classList.toggle('is-subring', Boolean(category))
     wheel.classList.toggle('is-busy', percent !== undefined)
+    const configure = category === 'pdf' || category === 'tools' || category === 'image'
+    settings.hidden = !configure || Boolean(problem) || !files.length || percent !== undefined
+    if (!settings.hidden) settings.innerHTML = `<details><summary>${t(getLanguage(), ['Opções de saída', 'Output options'])}</summary>
+      <label>${t(getLanguage(), ['Qualidade', 'Quality'])} <input type="range" min="20" max="100" value="${Math.round((options.quality ?? (category === 'pdf' ? .58 : .88)) * 100)}" data-option="quality"></label>
+      ${category === 'pdf' ? `<label>${t(getLanguage(), ['Rotação', 'Rotation'])} <select data-option="rotation">${[90,180,270].map(value => `<option value="${value}" ${options.rotation === value ? 'selected' : ''}>${value}°</option>`).join('')}</select></label>` : `<label>${t(getLanguage(), ['Dimensão máxima (px)', 'Maximum dimension (px)'])}<input type="number" min="64" max="8192" placeholder="1200" value="${options.maxDimension ?? ''}" data-option="maxDimension"></label>`}
+      </details>`
     control.hidden = !category && !files.length
     control.innerHTML = `${icon(category ? 'arrow' : 'close', 14)} ${local(category ? 'back' : 'close')}`
     control.classList.toggle('is-back', Boolean(category))
     status.textContent = problem ? local(problem) : checking ? local('verifying') : dragging ? local('drop') : files.length ? local('ready') : ''
     message.hidden = !problem && !result
     if (problem) {
-      message.innerHTML = `<p>${icon('lock', 18)} ${local(problem)}</p>${problem === 'password' ? `<form><label>${local('passwordLabel')} <input type="password" required autocomplete="off"></label><button type="submit">${local('unlock')}</button><p role="status"></p></form>` : ''}`
+      message.innerHTML = `<p>${icon('lock', 18)} ${local(problem)}</p>${(problem === 'password' || problem === 'wrong-password') ? `<form><label>${local('passwordLabel')} <input type="password" required autocomplete="off"></label><button type="submit">${local('unlock')}</button><p role="status"></p></form>` : ''}`
       message.querySelector('form')?.addEventListener('submit', event => {
         event.preventDefault()
         const form = event.currentTarget as HTMLFormElement
-        form.reset()
-        form.querySelector('p')!.textContent = local('passwordDemo')
+        const input = form.querySelector('input')!
+        void stage(files, undefined, input.value).then(() => {
+          if (problem) message.querySelector('input')?.focus({ preventScroll: true })
+        })
       })
     } else if (result) {
       const units = new Intl.NumberFormat(getLanguage(), { style: 'unit', unit: 'kilobyte', maximumFractionDigits: 2 })
-      message.innerHTML = `<strong>${result.demo ? local('done') : escape(result.name)}</strong>
+      message.innerHTML = `<strong>${escape(result.name)}</strong>
         <p>${local('before')} ${units.format(result.before / 1000)} · ${local('after')} ${units.format(result.blob.size / 1000)}</p>
-        ${result.demo ? `<p>${local('resultInfo')}</p>` : ''}
-        <div><a class="button button-small" href="${result.url}" download="${escape(result.name)}">${icon('down', 16)} ${result.demo ? local('save') : t(getLanguage(), ['Descarregar', 'Download'])}</a>
+        <div><a class="button button-small" href="${result.url}" download="${escape(result.name)}">${icon('down', 16)} ${local('save')}</a>
         <button class="quiet" type="button" data-reset>${local('reset')}</button></div>`
       message.querySelector('[data-reset]')?.addEventListener('click', () => {
         reset()
@@ -147,7 +157,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     result = undefined
   }
 
-  async function stage(next: File[], recipe?: Recipe) {
+  async function stage(next: File[], recipe?: Recipe, password?: string) {
     if (!next.length || percent !== undefined) return
     const generation = ++token
     clearResult()
@@ -156,7 +166,8 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     problem = undefined
     checking = true
     render()
-    const verdict = await inspectFiles(next)
+    options = { ...options, password }
+    const verdict = await inspectFiles(next, password)
     if (generation !== token) return
     checking = false
     kinds = verdict.kinds
@@ -172,6 +183,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     files = []
     kinds = []
     problem = undefined
+    options = {}
     checking = false
     category = undefined
     active = undefined
@@ -201,14 +213,13 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     }
     try {
       const before = files.reduce((sum, file) => sum + file.size, 0)
-      const output = await convert(recipe, files, getLanguage(), value => {
+      const output = await convert(recipe, files, options, value => {
         percent = value
         renderCentre()
       })
       percent = 100
       renderCentre()
       await frame()
-      if (output.demo && !reduce.matches) await new Promise(resolve => setTimeout(resolve, 440))
       result = { ...output, before, url: URL.createObjectURL(output.blob) }
       if (!reduce.matches) {
         const burst = document.createElement('div')
@@ -227,7 +238,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     }
     percent = undefined
     render()
-    status.textContent = result?.demo ? local('done') : t(getLanguage(), ['Conversão concluída', 'Conversion complete'])
+    status.textContent = local('done')
     message.querySelector('a')?.focus({ preventScroll: true })
   }
 
@@ -252,6 +263,13 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     render()
   }
 
+  settings.addEventListener('change', event => {
+    const input = event.target as HTMLInputElement
+    const value = Number(input.value)
+    if (input.dataset.option === 'quality') options.quality = value / 100
+    if (input.dataset.option === 'rotation') options.rotation = value as Options['rotation']
+    if (input.dataset.option === 'maxDimension') options.maxDimension = input.value ? Math.max(64, Math.min(8192, value)) : undefined
+  })
   wheel.addEventListener('pointerover', event => setActive(hit(event.target)))
   wheel.addEventListener('pointerleave', () => setActive(hit(document.activeElement)))
   buttons.addEventListener('focusin', event => setActive(hit(event.target)))
