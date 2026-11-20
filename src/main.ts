@@ -1,5 +1,5 @@
 import './style.css'
-import { categories, recipes, t, type Category, type Language } from './catalog'
+import { categories, recipes, t, type Category, type Language } from '../packages/engine/catalog'
 import { copy, questions, windowsSteps } from './copy'
 import { icon } from './icons'
 import { mountWheel } from './wheel'
@@ -74,6 +74,7 @@ app.innerHTML = `
             <button class="quiet" type="button" data-example>${label('example')}</button>
           </div>
           <button class="quiet wheel-back" type="button" data-back hidden></button>
+          <div class="wheel-settings" hidden></div>
           <div class="wheel-status" role="status"></div>
           <div class="wheel-message" hidden></div>
         </section>

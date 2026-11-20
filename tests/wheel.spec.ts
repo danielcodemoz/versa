@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { samplePdf } from '../src/sample'
 
 test('the keyboard opens the sub-ring, runs a sample, and downloads the result', async ({ page }) => {
   const errors: string[] = []
@@ -17,10 +18,10 @@ test('the keyboard opens the sub-ring, runs a sample, and downloads the result',
   await page.keyboard.press('Enter')
   await expect(page.locator('.wheel-buttons [data-slice=pdf-word]')).toBeFocused()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('status')).toHaveText('Demonstração pronta')
+  await expect(page.getByRole('status')).toHaveText('Conversão concluída')
   const download = page.waitForEvent('download')
-  await page.getByRole('link', { name: 'Descarregar demonstração' }).click()
-  expect((await download).suggestedFilename()).toBe('versa-demonstracao.txt')
+  await page.getByRole('link', { name: 'Descarregar', exact: true }).click()
+  expect((await download).suggestedFilename()).toBe('ficha-de-exemplo (Versa).docx')
   await page.getByRole('button', { name: 'Converter outro' }).click()
   await expect(page.getByRole('button', { name: 'Escolher ficheiros', exact: true }).last()).toBeFocused()
   expect(errors).toEqual([])
@@ -42,7 +43,7 @@ test('drop enters preflight, locks corrupt inputs, and supports multiple PDF fil
   await target.dispatchEvent('drop', { dataTransfer: data })
   await expect(page.getByRole('status')).toContainText('Ficheiro incompleto ou danificado')
   await expect(page.locator('.wheel-buttons button:not([aria-disabled])')).toHaveCount(0)
-  const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\nstartxref\n0\n%%EOF')
+  const pdf = Buffer.from(await samplePdf().arrayBuffer())
   await page.locator('input[type=file]').setInputFiles([
     { name: 'one.pdf', mimeType: 'application/pdf', buffer: pdf },
     { name: 'two.pdf', mimeType: 'application/pdf', buffer: pdf },

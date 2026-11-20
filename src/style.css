@@ -255,3 +255,6 @@ footer p a{font-weight:800}
 }
 .wheel:is(:hover,:focus-within){animation-play-state:paused}
 :root[data-theme=dark] .marker::before{inset:-4% -2% 0 -3%}
+.wheel-settings{font-size:.78rem;text-align:center;margin-top:5px}
+.wheel-settings label{display:inline-flex;gap:7px;align-items:center;margin:6px}
+.wheel-settings input[type=number]{width:85px}
