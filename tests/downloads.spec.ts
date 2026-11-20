@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('the Windows button opens a bilingual download page that fits 390px', async ({ page }) => {
+test('the Windows button opens the versioned release and the downloads page fits 390px', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
@@ -8,10 +8,7 @@ test('the Windows button opens a bilingual download page that fits 390px', async
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })
   await page.goto('/')
   const installer = page.getByRole('link', { name: 'Descarregar para Windows' })
-  await expect(installer).toHaveAttribute('href', /^\/downloads\/Versa-Setup-[\d.]+\.exe\/$/)
-  const alias = await page.request.get((await installer.getAttribute('href'))!)
-  expect(alias.ok()).toBe(true)
-  expect(await alias.text()).toMatch(/http-equiv="refresh" content="0;url=https:\/\/github\.com\/danielcodemoz\/versa\/releases\/download\//)
+  await expect(installer).toHaveAttribute('href', /^https:\/\/github\.com\/danielcodemoz\/versa\/releases\/download\/v[\d.]+\/Versa-Setup-[\d.]+\.exe$/)
   await page.getByRole('link', { name: 'Outros instaladores' }).click()
   await expect(page).toHaveURL(/\/downloads\/$/)
   await expect(page.getByRole('heading', { name: 'Versa para Windows' })).toBeVisible()

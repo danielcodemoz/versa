@@ -3,7 +3,7 @@ import { categories, recipes, t, type Category, type Language } from '../package
 import { copy, questions, windowsSteps } from './copy'
 import { icon } from './icons'
 import { mountWheel } from './wheel'
-import { installerPath } from './release'
+import { installerUrl } from './release'
 import logoLight from '../brand/logo-light.svg'
 import logoDark from '../brand/logo-dark.svg'
 
@@ -50,7 +50,7 @@ app.innerHTML = `
           <p class="tagline" data-copy="tag">${local('tag')}</p>
           <p class="hero-description" data-copy="description">${local('description')}</p>
           <div class="hero-actions">
-            <a class="button download" href="${installerPath}">${icon('windows', 20)} ${label('download')}</a>
+            <a class="button download" href="${installerUrl}">${icon('windows', 20)} ${label('download')}</a>
             <a class="text-link" href="#roda">${label('browser')} ${icon('down', 16)}</a>
           </div>
           <p class="download-info">${label('downloadInfo')} · <a href="/downloads/">${label('downloadOptions')}</a></p>
