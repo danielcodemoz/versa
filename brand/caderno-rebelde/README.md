@@ -21,7 +21,7 @@ EN: Drop the file. Win recess.
 - Mono/UI: DM Mono  +  Caveat Brush (notas)
 
 ## Categories
-- PDF / PDF: `#E8432E` — juntar · comprimir · girar · → Word
+- PDF / PDF: `#E8432E` — juntar · comprimir · rodar · → Word
 - Word / Docs / Word / Docs: `#2B50E8` — → PDF · → texto · contar palavras
 - Imagem / Image: `#1FA35C` — → PDF · JPG⇄PNG · reduzir
 - Apresentações / Slides: `#FF8A00` — → PDF · → imagens · AulaView
