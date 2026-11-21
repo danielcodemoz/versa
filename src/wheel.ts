@@ -1,10 +1,11 @@
-import { available, categories, categoryFor, kindFromName, recipes, t, type Category, type Kind, type Language, type Recipe } from '../packages/engine/catalog'
+import { available, categories, categoryFor, kindFromName, recipes, suggest, t, type Category, type Kind, type Language, type Recipe } from '../packages/engine/catalog'
 import { copy } from './copy'
 import { icon } from './icons'
 import { inspectFiles, type Preflight, type Problem } from '../packages/engine/preflight'
 import { canRun, convert, type ConversionResult } from './conversion'
 import type { Options } from '../packages/engine'
 import { samplePdf } from './sample'
+import { handOff } from './handoff'
 
 const polar = (radius: number, degrees: number) => {
   const radians = degrees * Math.PI / 180
@@ -36,6 +37,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   const pick = root.querySelector<HTMLButtonElement>('[data-pick]')!
   const settings = root.querySelector<HTMLElement>('.wheel-settings')!
   const control = root.querySelector<HTMLButtonElement>('[data-back]')!
+  const suggestion = root.querySelector<HTMLElement>('.wheel-suggest')!
   const overlay = document.querySelector<HTMLElement>('.drag-shade')!
   const reduce = matchMedia('(prefers-reduced-motion: reduce)')
   let category: Category | undefined
@@ -181,11 +183,36 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
         }
       })
     }
+    renderSuggestion()
     const previous = active
     active = undefined
     setActive(previous && slices.some(slice => slice.id === previous) ? previous : undefined)
     renderCentre()
   }
+
+  let suggested: Recipe | undefined
+  let suggestionKey = ''
+  function renderSuggestion() {
+    const next = files.length && !category && !checking && !problem && !dragging && percent === undefined && !result ? suggest(kinds) : undefined
+    const edit = kinds.length === 1 && kinds[0] === 'pdf' && !nativeSource && !('__TAURI_INTERNALS__' in window)
+    if (!next) suggestionKey = ''
+    const key = next ? [next.id, files.length, kinds.join(), edit, getLanguage()].join('|') : ''
+    suggested = next
+    suggestion.hidden = !next
+    if (!next || key === suggestionKey) return
+    suggestionKey = key
+    suggestion.setAttribute('aria-label', local('suggestion'))
+    const from = files.length > 1 ? `${files.length} ${local('files')}` : kinds[0].toUpperCase()
+    suggestion.innerHTML = `<p class="suggest-label">${local('suggestion')}</p>
+      <div><button class="button suggest-run" type="button" data-suggest>${icon('arrow', 18)} ${local('convertNow')} ${from} → ${next.output} <kbd aria-hidden="true">Enter</kbd></button>
+      ${edit ? `<button class="quiet" type="button" data-edit>${local('editPdf')}</button>` : ''}</div>`
+  }
+  const runSuggestion = () => { if (suggested && !suggestion.hidden) void run(suggested) }
+  suggestion.addEventListener('click', event => {
+    const button = (event.target as Element).closest('button')
+    if (button?.hasAttribute('data-suggest')) runSuggestion()
+    else if (button?.hasAttribute('data-edit') && files[0]) void handOff(files[0]).then(() => { location.href = '/editor.html#abrir' })
+  })
 
   const clearResult = () => {
     if (result) URL.revokeObjectURL(result.url)
@@ -210,6 +237,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     if (category && !problem && !recipes.some(recipe => recipe.category === category && canRun(recipe) && available(recipe, kinds))) category = undefined
     render()
     if (recipe && !problem && canRun(recipe) && available(recipe, kinds)) await run(recipe)
+    else if (!suggestion.hidden) suggestion.querySelector<HTMLElement>('[data-suggest]')?.focus({ preventScroll: true })
   }
 
   function reset() {
@@ -377,6 +405,12 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     fileInput.value = ''
   })
   window.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.defaultPrevented && !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey && !suggestion.hidden &&
+      !(event.target as Element | null)?.closest?.('button, a, input, select, textarea, summary, [contenteditable]')) {
+      event.preventDefault()
+      runSuggestion()
+      return
+    }
     if (event.key !== 'Escape') return
     if (dragging) endDrag()
     else if (category) control.click()

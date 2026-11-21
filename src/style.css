@@ -296,3 +296,13 @@ footer p a{font-weight:800}
 .release-formats{font-size:.84rem;color:var(--muted)}
 .release-actions .button-secondary{background:var(--surface);color:var(--ink)}
 .release-other{display:flex;justify-content:center;gap:16px;font-size:.82rem;color:var(--muted);margin-top:16px}
+.wheel-suggest{background:var(--surface);border:1px solid var(--ink);border-radius:7px;margin-top:8px;padding:11px;box-shadow:2px 2px 0 var(--heavy)}
+.wheel-suggest>div{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin-top:8px}
+.suggest-label{font:.7rem var(--mono);color:var(--red);text-transform:uppercase;letter-spacing:.06em}
+.suggest-run{background:var(--marker);color:#1a1a2e;font-weight:800;font-size:.9rem;padding:9px 14px;min-height:44px;text-align:left}
+.suggest-run kbd{font:.68rem var(--mono);border:1px solid currentColor;border-radius:4px;padding:1px 5px}
+.gesture .wheel-suggest{position:absolute;z-index:4;bottom:6px;max-width:92%;width:max-content;padding:6px 8px}
+.gesture .wheel-suggest>div{margin-top:4px}
+.gesture .suggest-run kbd{display:none}
+.nav-editor{white-space:nowrap}
+.editor-band .button{margin-top:22px}
