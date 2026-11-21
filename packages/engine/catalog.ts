@@ -31,7 +31,7 @@ export const recipes: Recipe[] = [
   { id: 'pdf-merge', category: 'pdf', name: ['Juntar', 'Merge'], inputs: pdf, output: 'PDF', multiple: true, min: 2, load: () => import('./pdf').then(module => module.mergePdf) },
   { id: 'pdf-split', category: 'pdf', name: ['Dividir', 'Split'], inputs: pdf, output: 'PDF', load: () => import('./pdf').then(module => module.splitPdf) },
   { id: 'pdf-compress', category: 'pdf', name: ['Comprimir', 'Compress'], inputs: pdf, output: 'PDF', load: () => import('./pdf').then(module => module.compressPdf) },
-  { id: 'pdf-rotate', category: 'pdf', name: ['Girar', 'Rotate'], inputs: pdf, output: 'PDF', load: () => import('./pdf').then(module => module.rotatePdf) },
+  { id: 'pdf-rotate', category: 'pdf', name: ['Rodar', 'Rotate'], inputs: pdf, output: 'PDF', load: () => import('./pdf').then(module => module.rotatePdf) },
   { id: 'word-pdf', category: 'docs', name: ['Word → PDF', 'Word → PDF'], inputs: ['docx'], output: 'PDF', load: () => import('./word').then(module => module.wordPdf) },
   { id: 'excel-pdf', category: 'docs', name: ['Excel → PDF', 'Excel → PDF'], inputs: ['xlsx'], output: 'PDF', load: () => import('./excel').then(module => module.excelPdf) },
   { id: 'word-text', category: 'docs', name: ['Extrair texto', 'Extract text'], inputs: ['docx'], output: 'TXT', load: () => import('./word').then(module => module.extractWord) },
