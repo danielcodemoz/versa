@@ -255,10 +255,64 @@ fn raw<'a>(request: &'a Request<'_>) -> Result<&'a [u8], String> {
 fn split_payload(payload: &[u8]) -> Result<(&[u8], &[u8]), String> {
     let separator = payload
         .iter()
-        .take(128)
+        .take(1024)
         .position(|byte| *byte == b'\n')
         .ok_or("Missing operation header.")?;
     Ok((&payload[..separator], &payload[separator + 1..]))
+}
+
+#[tauri::command]
+async fn save_editor_pdf(
+    app: AppHandle,
+    window: WebviewWindow,
+    request: Request<'_>,
+) -> Result<bool, String> {
+    use std::io::Write;
+    if window.label() != "main" {
+        return Err("PDF editing requires the main window.".into());
+    }
+    let (header, data) = split_payload(raw(&request)?)?;
+    let name: String = serde_json::from_slice(header).map_err(|error| error.to_string())?;
+    if !data.starts_with(b"%PDF-") || data.len() as u64 > files::MAX_BYTES * 3 {
+        return Err("Invalid PDF output.".into());
+    }
+    let suggestion = std::path::Path::new(&name)
+        .file_name()
+        .ok_or("Invalid filename.")?
+        .to_string_lossy()
+        .into_owned();
+    let bytes = data.to_vec();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(path) = app
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_file_name(suggestion)
+            .add_filter("PDF", &["pdf"])
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let mut path = path.into_path().map_err(|error| error.to_string())?;
+        if !path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
+        {
+            path.set_extension("pdf");
+        }
+        let folder = path.parent().ok_or("Output folder unavailable.")?;
+        let mut temporary =
+            tempfile::NamedTempFile::new_in(folder).map_err(|error| error.to_string())?;
+        temporary
+            .write_all(&bytes)
+            .map_err(|error| error.to_string())?;
+        temporary
+            .persist_noclobber(path)
+            .map_err(|error| error.to_string())?;
+        Ok(true)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[derive(Deserialize)]
@@ -569,6 +623,7 @@ fn main() {
             pick,
             read_file,
             save_result,
+            save_editor_pdf,
             office_pdf,
             history,
             open_result,

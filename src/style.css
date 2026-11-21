@@ -201,6 +201,7 @@ footer p a{font-weight:800}
 .desktop .masthead nav,.desktop footer,.desktop .hero-copy,.desktop .hero-bottom,.desktop main>section:not(.hero){display:none}
 .desktop .hero,.desktop .masthead{background:var(--paper)}
 .desktop .hero-grid{display:block;width:min(100% - 25px,590px);padding:12px 0}
+.desktop-editor-link{margin:16px 0 0;background:var(--surface);color:var(--ink)}
 @media (max-width:1050px){
   .shell{width:calc(100% - 64px)}
   .hero-grid{gap:35px}
