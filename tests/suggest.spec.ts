@@ -128,12 +128,25 @@ test('the initial wheel routes image, document and slide extensions and keeps un
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
   const selector = '.wheel-centre'
+  const jpg = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 2
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg'))
+    return [...new Uint8Array(await blob!.arrayBuffer())]
+  })
   await dropFiles(page, [
     { name: 'a.PNG', type: '', bytes: [...png] },
-    { name: 'b', type: 'image/png', bytes: [...png] },
+    { name: 'b', type: 'image/jpeg', bytes: jpg },
   ], selector)
   await expect(page.getByRole('status')).toHaveText('Ficheiros verificados')
   await expect(page.locator('.wheel-buttons [data-slice=image-pdf]')).toBeEnabled()
+  await page.getByRole('button', { name: 'Voltar às categorias' }).click()
+
+  await dropFiles(page, [
+    { name: 'a.docx', type: '', bytes: [1] },
+    { name: 'b.odt', type: '', bytes: [1] },
+  ], selector)
+  await expect(page.locator('.wheel-buttons [data-slice=word-pdf]')).toHaveAttribute('aria-disabled', 'true')
   await page.getByRole('button', { name: 'Voltar às categorias' }).click()
 
   for (const [name, action] of [
