@@ -18,13 +18,13 @@ O **editor de PDF** ([versa.danielpro.dev/editor.html](https://versa.danielpro.d
 
 A interface abre em português de Moçambique e inclui uma versão em inglês.
 
-## Windows v0.1.0
+## Windows v0.1.1
 
 Instaladores para Windows 10 e 11, x64. O EXE instala para o utilizador actual. O MSI destina-se a instalações geridas.
 
-- [Instalador EXE](https://github.com/danielcodemoz/versa/releases/download/v0.1.0/Versa-Setup-0.1.0.exe)
-- [Instalador MSI](https://github.com/danielcodemoz/versa/releases/download/v0.1.0/Versa-0.1.0-x64.msi)
-- [Release v0.1.0 e somas SHA-256](https://github.com/danielcodemoz/versa/releases/tag/v0.1.0)
+- [Instalador EXE](https://github.com/danielcodemoz/versa/releases/download/v0.1.1/Versa-Setup-0.1.1.exe)
+- [Instalador MSI](https://github.com/danielcodemoz/versa/releases/download/v0.1.1/Versa-0.1.1-x64.msi)
+- [Release v0.1.1 e somas SHA-256](https://github.com/danielcodemoz/versa/releases/tag/v0.1.1)
 
 ## Desenvolvimento
 
