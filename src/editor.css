@@ -34,10 +34,10 @@
 .ed-thumbs li{cursor:grab;border-radius:6px}
 .ed-thumbs li.is-dragged{opacity:.4}
 .ed-thumbs li.drop-target{outline:3px dashed var(--red);outline-offset:3px}
-.ed-thumbs button{position:relative;display:block;width:100%;padding:0;border:2px solid var(--ink);border-radius:5px;background:#fff;overflow:hidden;box-shadow:3px 3px 0 var(--heavy)}
-.ed-thumbs li.is-current button{outline:3px solid var(--sticker);outline-offset:2px}
+.ed-thumbs [data-thumb]{position:relative;display:block;width:100%;padding:0;border:2px solid var(--ink);border-radius:5px;background:#fff;overflow:hidden;box-shadow:3px 3px 0 var(--heavy)}
+.ed-thumbs li.is-current [data-thumb]{outline:3px solid var(--sticker);outline-offset:2px}
 .ed-thumbs img{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none}
-.ed-thumbs button>span{position:absolute;right:3px;bottom:3px;font:.68rem var(--mono);background:var(--ink);color:var(--paper);padding:1px 5px;border-radius:3px}
+.ed-thumbs [data-thumb]>span{position:absolute;right:3px;bottom:3px;font:.68rem var(--mono);background:var(--ink);color:var(--paper);padding:1px 5px;border-radius:3px}
 .ed-stage{min-width:0;overflow:auto;padding:12px;background:var(--grid);border:2px solid var(--ink);border-radius:9px;max-height:calc(100svh - 150px);min-height:320px}
 .ed-wrap{position:relative;margin:0 auto;box-shadow:5px 6px 0 var(--heavy)}
 .ed-sheet{position:absolute;left:0;top:0;transform-origin:0 0;background:#fff;touch-action:pan-x pan-y pinch-zoom;user-select:none}
@@ -87,4 +87,55 @@
   .ed-save{margin-left:0;width:100%}
   .ed-props input[type=range]{width:84px}
   .ed-stage{padding:6px}
+}
+
+.ed-visual{margin-top:13px;padding:8px 10px;background:var(--panel);border-left:3px solid var(--red);color:var(--ink);font-size:.82rem;line-height:1.4}
+.ed-toolbar{position:relative}
+.ed-body{grid-template-columns:210px minmax(0,1fr)}
+.ed-thumbs{top:12px;max-height:calc(100svh - 24px)}
+.ed-page-tools{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:14px}
+.ed-thumbs .ed-page-tools .tool{min-height:40px;padding:4px 5px;font-size:.7rem;overflow:visible;text-align:start;justify-content:flex-start;background:var(--paper);box-shadow:none}
+.ed-page-tools svg{flex:none}
+.ed-thumbs li{position:relative;width:min(100%,122px);margin-inline:auto}
+.ed-thumbs [data-extract]{position:absolute;top:4px;left:4px;width:24px;height:24px;accent-color:#2b50e8;margin:0}
+.ed-menu{font-size:.78rem;font-weight:750;display:flex;align-items:center;gap:4px}
+.ed-menu select,.ed-field input,.ed-field select,.ed-field textarea,.ed-type select,.ed-type textarea{
+  min-height:36px;max-width:100%;background:var(--paper);color:var(--ink);border:1px solid var(--ink);padding:4px 6px;border-radius:5px;font:inherit
+}
+.ed-type textarea{width:100%;min-width:0}
+.ed-form{margin:14px 0;border:1px solid var(--ink);border-radius:6px;background:var(--panel);padding:10px;font-size:.88rem}
+.ed-form summary{cursor:pointer;font-weight:800}
+.ed-form [data-fields]{display:grid;gap:10px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}
+.ed-form label{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}
+.ed-form label input,.ed-form label select,.ed-form label textarea{
+  min-height:36px;max-width:100%;min-width:0;background:var(--paper);color:var(--ink);border:1px solid var(--ink);padding:4px 6px;border-radius:5px;font:inherit
+}
+.ed-form .ed-field-check{flex-direction:row;align-items:center;gap:8px}
+.ed-native-back{display:inline-flex;margin-bottom:12px}
+.ed-error{color:var(--red);min-height:1em}
+.ed-originals,.ed-inline,.ed-vector{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.ed-original-hit,.ed-original-edit,.ed-replacement{
+  position:absolute;transform-origin:0 0;padding:0;margin:0;border:0;text-align:left
+}
+.ed-original-hit{background:transparent;pointer-events:auto;box-shadow:none}
+.ed-original-hit:hover,.ed-original-hit:focus-visible{outline:2px dashed #2b50e8;outline-offset:1px}
+.ed-original-edit{z-index:2;pointer-events:auto}
+.ed-inline input{width:100%;height:100%;min-width:40px;border:0;outline:2px solid #2b50e8;padding:0}
+.ed-inline-actions{position:absolute;top:100%;left:0;display:flex;gap:4px;z-index:3}
+.ed-inline-actions .tool{min-height:32px;white-space:nowrap}
+.ed-replacement{white-space:nowrap;cursor:text}
+.ed-stamp{border:2px solid currentColor;background:transparent;white-space:nowrap;padding:3px 8px;font-size:calc(16px * var(--s));line-height:1.2}
+.ed-comment{display:grid;place-items:center;background:#ffe14d;color:#172825;border:1px solid #172825;border-radius:5px;padding:3px}
+.ed-note.is-selected:not(.ed-text){outline:2px dashed #2b50e8;outline-offset:2px}
+.ed-sheet[data-mode=select] .ed-shape{pointer-events:painted;cursor:pointer}
+.ed-shape.is-selected{outline:2px dashed #2b50e8}
+.ed-sheet:is([data-mode=rect],[data-mode=circle],[data-mode=line],[data-mode=arrow],[data-mode=cover],[data-mode=stamp],[data-mode=comment]){
+  cursor:crosshair;touch-action:none
+}
+@media (max-width:900px){
+  .ed-body{grid-template-columns:1fr}
+  .ed-thumbs{max-height:none}
+  .ed-thumbs li{width:82px;margin:0}
+  .ed-page-tools{grid-template-columns:repeat(auto-fit,minmax(106px,1fr))}
+  .ed-page-tools .tool span,.ed-inline-actions .tool span{position:static;width:auto;height:auto;overflow:visible;clip-path:none;white-space:normal}
 }

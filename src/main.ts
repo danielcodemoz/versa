@@ -84,6 +84,7 @@ app.innerHTML = `
           <div class="wheel-suggest" role="region" aria-label="${local('suggestion')}" hidden></div>
           <div class="wheel-message" hidden></div>
         </section>
+        ${desktop === 'main' ? `<a class="button button-small desktop-editor-link" href="/desktop-editor.html">${icon('pdf', 18)} ${label('editorLink')}</a>` : ''}
       </div>
       ${desktop ? '<section class="native-settings shell" hidden></section>' : ''}
       <div class="shell hero-bottom"><span>${icon('lock', 15)} ${label('bytes')}</span><a href="#categorias">${label('categories')} ${icon('down', 15)}</a></div>
