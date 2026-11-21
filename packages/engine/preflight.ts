@@ -1,3 +1,4 @@
+import { inputByteLimit } from './input-limit'
 import { kindFromFile, type Kind } from './catalog'
 
 export type Problem = 'empty' | 'large' | 'type' | 'damaged' | 'password' | 'wrong-password'
@@ -6,8 +7,7 @@ const decode = (data: Uint8Array) => new TextDecoder('latin1').decode(data)
 
 export async function inspectFiles(files: File[], password?: string): Promise<Preflight> {
   const kinds: Kind[] = []
-  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4
-  const limit = Math.min(memory * 48, 192) * 1024 ** 2
+  const limit = inputByteLimit()
   if (files.reduce((sum, file) => sum + file.size, 0) > limit) return { kinds, problem: 'large' }
   for (const file of files) {
     if (!file.size) return { kinds, problem: 'empty' }

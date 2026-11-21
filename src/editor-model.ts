@@ -5,7 +5,7 @@ export type Family = 'sans' | 'serif' | 'mono'
 export type Point = [number, number]
 export interface TextNote { kind: 'text'; id: number; x: number; y: number; text: string; size: number; color: string; font: Family }
 export interface Stroke { kind: 'ink'; id: number; points: Point[]; color: string; width: number; alpha: number }
-export interface Picture { kind: 'pic'; id: number; x: number; y: number; w: number; h: number; image: number }
+export interface Picture { kind: 'pic'; id: number; x: number; y: number; w: number; h: number; image: number; angle: Turn; opacity: number }
 export type ShapeKind = 'rect' | 'circle' | 'line' | 'arrow' | 'cover'
 export interface Shape { kind: 'shape'; id: number; mode: ShapeKind; from: Point; to: Point; color: string; width: number }
 export interface Original {
@@ -18,7 +18,7 @@ export interface Stamp { kind: 'stamp'; id: number; at: Point; text: string; col
 export type Note = TextNote | Stroke | Picture | Shape | Replacement | Comment | Stamp
 export interface Sheet { id: number; src: number; turn: Turn; notes: Note[] }
 export interface Meta { w: number; h: number; base: Turn; unit: number; source?: number; page?: number }
-export interface Bitmap { bytes: Uint8Array; type: 'png' | 'jpg'; url: string; w: number; h: number }
+export interface Bitmap { data: Blob; type: 'png' | 'jpg'; url: string; w: number; h: number }
 export type FormValue = string | boolean | string[]
 export interface FormField {
   name: string
@@ -29,7 +29,7 @@ export interface FormField {
   multiple?: boolean
   maxLength?: number
 }
-export interface Source { pdf: PDFDocumentProxy; close: () => Promise<void> | void; bytes: Uint8Array; fields: FormField[] }
+export interface Source { pdf: PDFDocumentProxy; close: () => Promise<void> | void; data: Blob; fields: FormField[] }
 export const fieldKey = (source: number, name: string) => JSON.stringify([source, name])
 
 export function offset(origin: Point, angle: number, x: number, y: number): Point {

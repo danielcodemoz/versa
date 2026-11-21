@@ -1,0 +1,2 @@
+import"./logo-dark-DlKG6rl7.js";import{t as e}from"./editor-B14o0xmw.js";import{i as t,n,r,t as i}from"./native-window-CiC674X0.js";var a=t()?{titlebar:i,save(e,t){let n=new TextEncoder().encode(JSON.stringify(e)+`
+`),i=new Uint8Array(n.length+t.byteLength);return i.set(n),i.set(new Uint8Array(t),n.length),r(`save_editor_pdf`,i)},onDrop(e,t){n(`versa-drag-drop`,async n=>{let{id:i,entries:a}=n.payload,o=a[0];if(i!==null&&o)try{let t=await r(`read_file`,{id:i,index:0});await e(new File([t],o.name))}catch{t()}},{target:{kind:`Window`,label:`main`}}).catch(()=>{})}}:void 0;e(a);

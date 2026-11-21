@@ -1,8 +1,6 @@
 import './style.css'
 import './editor.css'
 import { t, type Language, type Phrase } from '../packages/engine/catalog'
-import { inspectFiles } from '../packages/engine/preflight'
-import { localName } from '../packages/engine/types'
 import { copy } from './copy'
 import { icon } from './icons'
 import { samplePdf } from './sample'
@@ -10,18 +8,16 @@ import { takeHandOff } from './handoff'
 import { baseline, framePointToPdf, lineHeight, normalise, sheetTransform, viewToFrame, type Turn } from './editor-geometry'
 import logoLight from '../brand/logo-light.svg'
 import logoDark from '../brand/logo-dark.svg'
-import { invoke, isTauri } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
-import { mountTitlebar } from './native-window'
+import type { EditorNative } from './editor-native'
+import { editInWorker } from './editor-worker'
+import type { Crop } from './editor-images'
 import { arrowHead, bounds, fieldKey, offset, type Bitmap, type Family, type FormValue, type Meta, type Note, type Original, type Picture, type Point, type Replacement, type Shape, type ShapeKind, type Sheet, type Source, type Stroke, type TextNote } from './editor-model'
-import { originalBlocks } from './editor-original'
+type OriginalInspector = typeof import('./editor-original').originalBlocks
 
 type Tool = 'select' | 'text' | 'pen' | 'hl' | ShapeKind | 'stamp' | 'comment'
 type StampKind = 'approved' | 'draft' | 'date'
 const shapeKinds = ['rect', 'circle', 'line', 'arrow'] as const
 const isShape = (tool: Tool): tool is ShapeKind => tool === 'cover' || shapeKinds.some(shape => shape === tool)
-const desktop = isTauri()
-const backUrl = desktop ? '/desktop.html?desktop=main' : '/'
 
 const P = {
   back: ['Voltar ao Versa', 'Back to Versa'],
@@ -32,7 +28,17 @@ const P = {
   openAnother: ['Abrir outro PDF', 'Open another PDF'],
   sample: ['Experimentar com exemplo', 'Try with a sample'],
   privacy: ['0 bytes enviados', '0 bytes uploaded'],
-  tools: ['Ferramentas', 'Tools'],
+  tools: ['Ferramentas', 'Tools'], edit: ['Editar', 'Edit'], insert: ['Inserir', 'Insert'], annotate: ['Anotar', 'Annotate'],
+  name: ['Nome do documento', 'Document name'], unnamed: ['Documento', 'Document'],
+  grid: ['Grelha de páginas', 'Page grid'], first: ['Mover para o início', 'Move to start'], last: ['Mover para o fim', 'Move to end'],
+  all: ['Seleccionar todas', 'Select all'], none: ['Limpar selecção de páginas', 'Clear page selection'],
+  selectedPages: ['Páginas seleccionadas', 'Selected pages'],
+  pictureTools: ['Editar imagem', 'Edit image'], crop: ['Recortar imagem', 'Crop image'],
+  replacePicture: ['Substituir imagem', 'Replace image'], pictureLeft: ['Rodar imagem à esquerda', 'Rotate image left'],
+  pictureRight: ['Rodar imagem à direita', 'Rotate image right'], opacity: ['Opacidade', 'Opacity'],
+  unlocking: ['A desbloquear…', 'Unlocking…'],
+  unlocked: ['A cópia guardada ficará sem palavra-passe.', 'The saved copy will have no password.'],
+  unlockFail: ['Não foi possível desbloquear o PDF.', 'Could not unlock this PDF.'],
   select: ['Seleccionar', 'Select'], text: ['Texto', 'Text'], pen: ['Desenhar', 'Draw'], hl: ['Realçar', 'Highlight'],
   image: ['Imagem', 'Image'], sign: ['Assinatura', 'Signature'],
   colour: ['Cor', 'Colour'], size: ['Tamanho', 'Size'], font: ['Letra', 'Font'],
@@ -48,10 +54,7 @@ const P = {
   lastPage: ['Um PDF precisa de pelo menos uma página.', 'A PDF needs at least one page.'],
   typeHere: ['Escreve aqui', 'Type here'],
   textBox: ['Caixa de texto', 'Text box'], picture: ['Imagem inserida', 'Inserted image'],
-  signTitle: ['Desenha a tua assinatura', 'Draw your signature'],
-  signType: ['Ou escreve o teu nome', 'Or type your name'],
-  signClear: ['Limpar', 'Clear'], signUse: ['Usar assinatura', 'Use signature'], cancel: ['Cancelar', 'Cancel'],
-  signPad: ['Área da assinatura', 'Signature area'],
+  cancel: ['Cancelar', 'Cancel'],
   badImage: ['Escolhe uma imagem PNG, JPG ou WebP.', 'Choose a PNG, JPG or WebP image.'],
   leave: ['Tens alterações por guardar.', 'You have unsaved changes.'],
   replace: ['Abrir outro PDF e perder as alterações?', 'Open another PDF and lose your changes?'],
@@ -61,7 +64,7 @@ const P = {
   importHint: ['Indica páginas como 1, 3–5. Deixa vazio para inserir todas.', 'Enter pages such as 1, 3–5. Leave blank to insert all.'],
   range: ['Páginas a inserir', 'Pages to insert'], position: ['Posição', 'Position'],
   invalidRange: ['Escolhe páginas válidas, por exemplo 1, 3–5.', 'Choose valid pages, for example 1, 3–5.'],
-  extract: ['Extrair seleccionadas', 'Extract selected'], extractMark: ['Seleccionar para extrair', 'Select to extract'],
+  extract: ['Extrair seleccionadas', 'Extract selected'], extractMark: ['Seleccionar página', 'Select page'],
   extracted: ['Páginas extraídas para um novo PDF.', 'Pages extracted to a new PDF.'],
   shapes: ['Formas', 'Shapes'], rect: ['Rectângulo', 'Rectangle'], circle: ['Círculo', 'Circle'],
   line: ['Linha', 'Line'], arrow: ['Seta', 'Arrow'], cover: ['Caixa branca', 'White box'],
@@ -74,6 +77,7 @@ const P = {
 } as const satisfies Record<string, Phrase>
 type Key = keyof typeof P
 
+let native: EditorNative | undefined
 const stored = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
 const persist = (key: string, value: string) => { try { localStorage.setItem(key, value) } catch { /* Private browsing. */ } }
 let language: Language = stored('versa-language') === 'en' ? 'en' : 'pt'
@@ -92,10 +96,16 @@ const limits = { text: [8, 72], pen: [1, 12], hl: [8, 40] } as const
 const prefs = { size: { text: 18, pen: 2, hl: 16 }, color: { text: '#1a1a2e', pen: '#e8432e', hl: '#ffe14d' }, font: 'sans' as Family }
 
 const app = document.querySelector<HTMLDivElement>('#editor-app')!
+const button = (key: Key, glyph: string, attrs: string) => `<button class="tool icon-only" type="button" ${attrs} ${aria(key)}>${icon(glyph, 19)}</button>`
+const action = (key: Key, glyph: string) => button(key, glyph, `data-act="${key}"`)
+const toolButton = (key: Key, glyph: string = key) => button(key, glyph, `data-tool="${key}" aria-pressed="false"`)
+const group = (key: Key, contents: string) => `<div class="ed-group" role="group" aria-labelledby="ed-${key}"><span class="ed-group-label" id="ed-${key}" data-k="${key}">${tx(key)}</span><div class="ed-group-controls">${contents}</div></div>`
+const menu = (key: Key, attr: string, values: readonly Key[]) =>
+  `<select class="ed-menu" ${attr} ${aria(key)}><option value="" data-k="${key}">${tx(key)}</option>${values.map(value => `<option value="${value}" data-k="${value}">${tx(value)}</option>`).join('')}</select>`
 app.innerHTML = `
   <header class="masthead"><div class="shell masthead-inner">
-    <a class="brand-link" href="${backUrl}" aria-label="Versa"><img class="brand brand-light" src="${logoLight}" width="118" height="42" alt="Versa"><img class="brand brand-dark" src="${logoDark}" width="118" height="42" alt="Versa"></a>
-    <a class="text-link ed-back" href="${backUrl}">${icon('arrow', 16)} ${span('back')}</a>
+    <a class="brand-link" href="/" aria-label="Versa"><img class="brand brand-light" src="${logoLight}" width="118" height="42" alt="Versa"><img class="brand brand-dark" src="${logoDark}" width="118" height="42" alt="Versa"></a>
+    <a class="text-link ed-back" href="/">${icon('arrow', 16)} ${span('back')}</a>
     <div class="switches"><button class="switch language-switch" type="button" data-language></button><button class="switch theme-switch" type="button" data-theme></button></div>
   </div></header>
   <main class="editor shell">
@@ -111,41 +121,36 @@ app.innerHTML = `
     </section>
     <section class="ed-work" data-work hidden>
       <div class="ed-toolbar" role="toolbar" aria-label="${tx('tools')}" data-ka="tools">
-        <div class="ed-group" data-tools>
-          <button class="tool" type="button" data-pick>${icon('file', 20)}${span('openAnother')}</button>
-          ${(['select', 'text', 'pen', 'hl'] as const).map(tool => `<button class="tool" type="button" data-tool="${tool}" aria-pressed="false">${icon(tool === 'hl' ? 'highlight' : tool, 20)}${span(tool)}</button>`).join('')}
-          <button class="tool" type="button" data-image>${icon('image', 20)}${span('image')}</button>
-          <button class="tool" type="button" data-sign>${icon('sign', 20)}${span('sign')}</button>
-          <button class="tool" type="button" data-tool="cover" aria-pressed="false">${icon('cover', 20)}${span('cover')}</button>
-          <button class="tool" type="button" data-tool="comment" aria-pressed="false">${icon('comment', 20)}${span('comment')}</button>
-          <label class="ed-menu">${span('shapes')}<select data-shape><option value="" data-k="shapes">${tx('shapes')}</option>${shapeKinds.map(shape => `<option value="${shape}" data-k="${shape}">${tx(shape)}</option>`).join('')}</select></label>
-          <label class="ed-menu">${span('stamps')}<select data-stamp><option value="" data-k="stamps">${tx('stamps')}</option>${(['approved', 'draft', 'date'] as const).map(key => `<option value="${key}" data-k="${key}">${tx(key)}</option>`).join('')}</select></label>
+        <div class="ed-document">
+          <label>${span('name')} <input type="text" maxlength="180" autocomplete="off" spellcheck="false" data-document-name></label>
+          ${button('openAnother', 'file', 'data-pick')}
+          <button class="button ed-save" type="button" data-act="save">${icon('save', 19)} ${span('save')}</button>
         </div>
-        <div class="ed-group ed-props">
+        <div class="ed-tool-groups">
+          ${group('edit', toolButton('select') + toolButton('text') + action('undo', 'undo') + action('redo', 'redo') + action('delNote', 'close') + action('zoomout', 'zoomout') + action('zoomin', 'zoomin'))}
+          ${group('insert', button('image', 'image', 'data-image') + button('sign', 'sign', 'data-sign'))}
+          ${group('annotate', toolButton('pen') + toolButton('hl', 'highlight') + toolButton('cover') + toolButton('comment') + menu('shapes', 'data-shape', shapeKinds) + menu('stamps', 'data-stamp', ['approved', 'draft', 'date']))}
+          ${group('pages', button('grid', 'grid', 'data-act="grid" aria-pressed="false"') + action('all', 'check') + action('none', 'close') +
+            ([['pageBefore', 'pageBefore'], ['pageAfter', 'pageAfter'], ['duplicate', 'duplicate'], ['del', 'trash'], ['rotl', 'rotl'], ['rotr', 'rotr'],
+              ['first', 'first'], ['earlier', 'left'], ['later', 'right'], ['last', 'last'], ['importPages', 'upload'], ['extract', 'down']] as const)
+              .map(([key, glyph]) => action(key, glyph)).join('') + '<span data-selection aria-live="polite"></span>')}
+        </div>
+        <div class="ed-props" hidden>
           <span class="ed-swatches" role="group" data-ka="colour" aria-label="${tx('colour')}">${swatches.map(color => `<button type="button" class="swatch" data-color="${color}" style="--c:${color}" aria-label="${color}" aria-pressed="false"></button>`).join('')}</span>
           <label>${span('size')} <input type="range" data-size min="8" max="72" value="18"></label>
           <label data-font-label>${span('font')} <select data-font>${(['sans', 'serif', 'mono'] as const).map(family => `<option value="${family}" data-k="${family}">${tx(family)}</option>`).join('')}</select></label>
         </div>
-        <div class="ed-group ed-pages">
-          <button class="tool icon-only" type="button" data-act="undo" ${aria('undo')}>${icon('undo', 20)}</button>
-          <button class="tool icon-only" type="button" data-act="delNote" ${aria('delNote')}>${icon('close', 20)}</button>
-          <button class="tool icon-only" type="button" data-act="redo" ${aria('redo')}>${icon('redo', 20)}</button>
-          <button class="tool icon-only" type="button" data-act="zoomout" ${aria('zoomout')}>${icon('zoomout', 20)}</button>
-          <button class="tool icon-only" type="button" data-act="zoomin" ${aria('zoomin')}>${icon('zoomin', 20)}</button>
+        <div class="ed-image-tools" role="group" data-ka="pictureTools" aria-label="${tx('pictureTools')}" hidden>
+          ${button('pictureLeft', 'rotl', 'data-picture="left"')}
+          ${button('pictureRight', 'rotr', 'data-picture="right"')}
+          ${button('crop', 'crop', 'data-picture="crop"')}
+          ${button('replacePicture', 'image', 'data-picture="replace"')}
+          <label>${span('opacity')} <input type="range" data-opacity min="0" max="100" value="100"></label><span data-opacity-value>100%</span>
         </div>
-        <button class="button ed-save" type="button" data-act="save">${icon('save', 19)} ${span('save')}</button>
       </div>
       <p class="ed-visual" data-k="visual">${tx('visual')}</p>
-      <div class="ed-body">
-        <nav class="ed-thumbs" aria-label="${tx('pages')}" data-ka="pages">
-          <div class="ed-page-tools">
-            ${([['pageBefore', 'plus'], ['pageAfter', 'plus'], ['duplicate', 'duplicate'], ['del', 'trash'],
-              ['rotl', 'rotl'], ['rotr', 'rotr'], ['earlier', 'left'], ['later', 'right'],
-              ['importPages', 'upload'], ['extract', 'down']] as const).map(([action, glyph]) =>
-                `<button class="tool" type="button" data-act="${action}" ${aria(action)}>${icon(glyph, 16)}${span(action)}</button>`).join('')}
-          </div>
-          <ol data-thumbs></ol>
-        </nav>
+      <div class="ed-body" data-body>
+        <nav class="ed-thumbs" aria-label="${tx('pages')}" data-ka="pages"><ol data-thumbs></ol></nav>
         <div class="ed-stage" data-stage tabindex="-1">
           <div class="ed-wrap" data-wrap><div class="ed-sheet" data-sheet><canvas data-canvas></canvas><div class="ed-originals" data-originals></div><div class="ed-notes" data-notes></div><svg class="ed-ink" data-ink aria-hidden="true"></svg><div class="ed-inline" data-inline></div></div></div>
         </div>
@@ -157,13 +162,8 @@ app.innerHTML = `
     <input type="file" hidden accept=".pdf,application/pdf" data-open>
     <input type="file" hidden accept=".pdf,application/pdf" data-import>
     <input type="file" hidden accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" data-pic>
+    <input type="file" hidden accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" data-replace-pic>
   </main>
-  <dialog class="ed-dialog" data-dialog aria-labelledby="sign-title">
-    <h2 id="sign-title" data-k="signTitle">${tx('signTitle')}</h2>
-    <canvas class="ed-pad" data-pad width="600" height="220" role="img" ${aria('signPad')}></canvas>
-    <label class="ed-type"><span data-k="signType">${tx('signType')}</span> <input type="text" maxlength="40" data-typed autocomplete="off"></label>
-    <div class="ed-dialog-actions"><button class="button button-small" type="button" data-sign-use>${span('signUse')}</button><button class="quiet" type="button" data-sign-clear>${span('signClear')}</button><button class="quiet" type="button" data-sign-cancel>${span('cancel')}</button></div>
-  </dialog>
   <dialog class="ed-dialog" data-import-dialog aria-labelledby="import-title">
     <h2 id="import-title" data-k="importPages">${tx('importPages')}</h2>
     <p data-import-count></p><p data-k="importHint">${tx('importHint')}</p>
@@ -187,17 +187,23 @@ const startPanel = q('[data-start]'), work = q('[data-work]'), stage = q('[data-
 const sheetEl = q('[data-sheet]'), canvas = q<HTMLCanvasElement>('[data-canvas]'), inkLayer = q<HTMLElement>('[data-ink]') as unknown as SVGSVGElement
 const notesEl = q('[data-notes]'), thumbsEl = q('[data-thumbs]'), status = q('[data-status]')
 const openInput = q<HTMLInputElement>('[data-open]'), picInput = q<HTMLInputElement>('[data-pic]')
+const nameInput = q<HTMLInputElement>('[data-document-name]')
+const askingPassword = () => Boolean(app.querySelector('[data-password-dialog][open]'))
 const sizeInput = q<HTMLInputElement>('[data-size]'), fontSelect = q<HTMLSelectElement>('[data-font]')
-const dialog = q<HTMLDialogElement>('[data-dialog]'), pad = q<HTMLCanvasElement>('[data-pad]'), typed = q<HTMLInputElement>('[data-typed]')
 
 let file: File | undefined
+let documentName = ''
+let grid = false
+let groupAnchor: number | undefined
+let secureCopy = false
 let sources: Source[] = []
 let formValues: Record<string, FormValue> = {}
 const extracting = new Set<number>()
 let stamp: StampKind = 'approved'
 let pendingImport: { source: Source; metas: Meta[] } | undefined
 let pendingComment: { sheet: Sheet; at: Point; id?: number } | undefined
-let displayedBlocks: Awaited<ReturnType<typeof originalBlocks>> | undefined
+let displayedBlocks: Awaited<ReturnType<OriginalInspector>> | undefined
+let inspectOriginals: Promise<typeof import('./editor-original') | undefined> | undefined
 let applyOriginal: (() => void) | undefined
 let renderNumber = 0
 let saving = false
@@ -215,8 +221,8 @@ let drawTask: { cancel(): void } | undefined
 const undoStack: string[] = []
 const redoStack: string[] = []
 const bitmaps: Bitmap[] = []
-const thumbs = new Map<string, string>()
-const rendering = new Set<string>()
+let thumbnails: ReturnType<typeof import('./editor-pages').makeThumbnails> | undefined
+let moveSelection: typeof import('./editor-pages').moveSelection
 const say = (message: string) => { status.textContent = message }
 
 function applyLanguage() {
@@ -225,14 +231,13 @@ function applyLanguage() {
   app.querySelectorAll<HTMLElement>('[data-k]').forEach(element => { element.textContent = tx(element.dataset.k as Key) })
   app.querySelectorAll<HTMLElement>('[data-ka]').forEach(element => {
     element.setAttribute('aria-label', tx(element.dataset.ka as Key))
-    if (element.tagName === 'BUTTON') element.title = tx(element.dataset.ka as Key)
+    if (element.tagName === 'BUTTON' || element.tagName === 'SELECT') element.title = tx(element.dataset.ka as Key)
   })
   q('[data-language]').textContent = language === 'pt' ? 'EN' : 'PT'
   q('[data-language]').setAttribute('aria-label', t(language, copy.language))
   q('[data-theme]').setAttribute('aria-label', t(language, copy.theme))
-  thumbsEl.querySelectorAll<HTMLElement>('[data-thumb]').forEach((item, index) => item.setAttribute('aria-label', `${tx('page')} ${index + 1}`))
-  thumbsEl.querySelectorAll<HTMLElement>('[data-extract]').forEach((item, index) => item.setAttribute('aria-label', `${tx('extractMark')} · ${tx('page')} ${index + 1}`))
-  if (file) renderFields()
+  if (file) { renderFields(); renderThumbs(); syncControls() }
+  if (secureCopy) say(tx('unlocked'))
   renderOriginals()
 }
 function applyTheme() {
@@ -244,7 +249,7 @@ function applyTheme() {
 }
 
 // ---------- history ----------
-const snapshot = () => JSON.stringify({ sheets, current, formValues })
+const snapshot = () => JSON.stringify({ sheets, current, formValues, documentName })
 function snap() {
   undoStack.push(snapshot())
   if (undoStack.length > 80) undoStack.shift()
@@ -256,9 +261,11 @@ function recall(from: string[], to: string[]) {
   if (!previous) return
   stopOriginalEdit()
   to.push(snapshot())
-  const state = JSON.parse(previous) as { sheets: Sheet[]; current: number; formValues: Record<string, FormValue> }
+  const state = JSON.parse(previous) as { sheets: Sheet[]; current: number; formValues: Record<string, FormValue>; documentName: string }
   sheets = state.sheets
+  for (const selected of extracting) if (!sheets.some(sheet => sheet.id === selected)) extracting.delete(selected)
   formValues = state.formValues
+  documentName = nameInput.value = state.documentName
   current = Math.min(state.current, sheets.length - 1)
   selected = undefined
   dirty = true
@@ -267,38 +274,38 @@ function recall(from: string[], to: string[]) {
 const undo = () => recall(undoStack, redoStack)
 const redo = () => recall(redoStack, undoStack)
 
-async function readSource(next: File, index: number) {
-  const verdict = await inspectFiles([next])
-  if (verdict.problem || verdict.kinds[0] !== 'pdf') {
-    say(t(language, copy[verdict.problem ?? 'type']))
-    return undefined
+async function readSource(next: File, index: number, mine: number) {
+  inspectOriginals ??= import('./editor-original').catch(() => undefined)
+  const [{ readEditablePdf, requestPassword }, pagesUi] = await Promise.all([import('./editor-source'), import('./editor-pages')])
+  moveSelection = pagesUi.moveSelection
+  if (!thumbnails) {
+    thumbnails = pagesUi.makeThumbnails(thumbsEl, paintThumb)
+    pagesUi.wirePageDrag(thumbsEl, () => grid, extracting, (ids, slot) => {
+      if (!grid) current = sheets.findIndex(sheet => ids.has(sheet.id))
+      rearrange(moveSelection(sheets, sheet => ids.has(sheet.id), slot))
+    })
   }
-  const { openPdf } = await import('../packages/engine/render-pdf')
-  const { describeForms } = await import('./editor-pdf')
-  const opened = await openPdf(next)
-  try {
-    const bytes = new Uint8Array(await next.arrayBuffer())
-    const fields = await describeForms(bytes).catch(() => [])
-    const pages: Meta[] = []
-    for (let page = 0; page < opened.pdf.numPages; page++) {
-      const proxy = await opened.pdf.getPage(page + 1)
-      const view = proxy.getViewport({ scale: 1 })
-      pages.push({ w: view.width, h: view.height, base: normalise(proxy.rotate), unit: proxy.userUnit, source: index, page })
-    }
-    return { source: { ...opened, bytes, fields }, metas: pages }
-  } catch (error) {
-    await opened.close()
-    throw error
-  }
+  return readEditablePdf(next, index, {
+    active: () => mine === generation,
+    password: retry => {
+      if (askingPassword()) return Promise.resolve(undefined)
+      say('')
+      return requestPassword(app, next.name, language, retry, tx('unlocked'))
+    },
+    status: key => {
+      if (mine === generation) say(key === 'empty' || key === 'large' || key === 'type' ? t(language, copy[key]) : tx(key))
+    },
+  })
 }
 
 const makeSheet = (src: number): Sheet => ({ id: nextId++, src, turn: 0, notes: [] })
 async function open(next: File) {
+  if (askingPassword()) return
   if ((dirty || applyOriginal) && !confirm(tx('replace'))) return
   const id = ++generation
   say(tx('opening'))
   try {
-    const result = await readSource(next, 0)
+    const result = await readSource(next, 0, id)
     if (!result) return
     if (id !== generation) { await result.source.close(); return }
     stopOriginalEdit()
@@ -307,10 +314,12 @@ async function open(next: File) {
     sources = [result.source]
     metas = result.metas
     file = next
+    secureCopy = result.secure
+    documentName = nameInput.value = next.name.replace(/\.pdf$/i, '')
+    grid = false
+    groupAnchor = undefined
     sheets = metas.map((_, src) => makeSheet(src))
-    thumbs.forEach(url => URL.revokeObjectURL(url))
-    thumbs.clear()
-    rendering.clear()
+    thumbnails?.reset()
     bitmaps.forEach(bitmap => URL.revokeObjectURL(bitmap.url))
     bitmaps.length = 0
     undoStack.length = redoStack.length = 0
@@ -324,7 +333,7 @@ async function open(next: File) {
     work.hidden = false
     setTool('select')
     renderAll()
-    say(tx('opened'))
+    say(tx(secureCopy ? 'unlocked' : 'opened'))
   } catch {
     if (id === generation) say(t(language, copy.damaged))
   }
@@ -342,7 +351,13 @@ function fitScale(sheet: Sheet) {
 
 function renderAll() {
   renderThumbs()
-  void showPage()
+  q('[data-body]').classList.toggle('is-grid', grid)
+  stage.hidden = grid
+  q('.ed-page-label').hidden = grid
+  if (!grid) void showPage()
+  else { renderNumber++; drawTask?.cancel() }
+  q('[data-current]').textContent = String(current + 1)
+  q('[data-total]').textContent = String(sheets.length)
   renderFields()
   syncControls()
 }
@@ -382,7 +397,9 @@ async function showPage() {
     const task = page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport })
     drawTask = task
     await task.promise
-    const blocks = await originalBlocks(page, canvas, factor)
+    const inspector = await inspectOriginals
+    if (!inspector || mine !== renderNumber) return
+    const blocks = await inspector.originalBlocks(page, canvas, factor)
     if (mine !== renderNumber) return
     displayedBlocks = blocks
     renderOriginals()
@@ -561,9 +578,9 @@ function renderFields() {
   const sheet = sheets[current]
   const source = sheet && metas[sheet.src].source
   const fields = source === undefined ? [] : sources[source].fields
-  form.hidden = !fields.length
+  form.hidden = grid || !fields.length
   holder.replaceChildren()
-  if (source === undefined) return
+  if (source === undefined || grid) return
   for (const field of fields) {
     const key = fieldKey(source, field.name)
     const value = formValues[key] ?? field.value
@@ -672,6 +689,8 @@ function renderNotes() {
       box.style.cssText = `left:${note.x * scale}px;top:${note.y * scale}px;width:${note.w * scale}px;height:${note.h * scale}px`
       const img = document.createElement('img')
       img.src = bitmap.url
+      box.style.transform = `rotate(${note.angle}deg)`
+      img.style.opacity = String(note.opacity)
       img.alt = ''
       img.draggable = false
       const grip = document.createElement('span')
@@ -742,71 +761,21 @@ function pathOf(points: [number, number][]) {
   return `M${first[0]} ${first[1]}` + rest.map(([x, y]) => `L${x} ${y}`).join('')
 }
 
-async function renderThumbs() {
-  const mine = generation
-  const list = sheets.map((sheet, index) => {
-    const key = `${sheet.src}:${sheet.turn}`
-    const url = thumbs.get(key)
-    const item = document.createElement('li')
-    item.draggable = true
-    item.dataset.index = String(index)
-    item.className = index === current ? 'is-current' : ''
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.dataset.thumb = String(index)
-    button.setAttribute('aria-label', `${tx('page')} ${index + 1}`)
-    if (index === current) button.setAttribute('aria-current', 'page')
-    const [fw, fh] = frameOf(sheet)
-    button.style.aspectRatio = sheet.turn % 180 ? `${fh} / ${fw}` : `${fw} / ${fh}`
-    if (url) {
-      const img = document.createElement('img')
-      img.src = url
-      img.alt = ''
-      img.draggable = false
-      button.append(img)
-    }
-    const number = document.createElement('span')
-    number.textContent = String(index + 1)
-    button.append(number)
-    const mark = document.createElement('input')
-    mark.type = 'checkbox'
-    mark.dataset.extract = String(sheet.id)
-    mark.checked = extracting.has(sheet.id)
-    mark.setAttribute('aria-label', `${tx('extractMark')} · ${tx('page')} ${index + 1}`)
-    item.append(button, mark)
-    return { item, key, sheet }
-  })
-  thumbsEl.replaceChildren(...list.map(entry => entry.item))
-  for (const { key, sheet } of list) {
-    if (thumbs.has(key) || rendering.has(key)) continue
-    if (mine !== generation) return
-    const meta = metas[sheet.src]
-    if (meta.source === undefined || meta.page === undefined) continue
-    rendering.add(key)
-    try {
-      const page = await sources[meta.source].pdf.getPage(meta.page + 1)
-      const viewport = page.getViewport({ scale: 1, rotation: (metas[sheet.src].base + sheet.turn) % 360 })
-      const factor = 120 / viewport.width
-      const small = page.getViewport({ scale: factor, rotation: (metas[sheet.src].base + sheet.turn) % 360 })
-      const surface = document.createElement('canvas')
-      surface.width = Math.ceil(small.width)
-      surface.height = Math.ceil(small.height)
-      await page.render({ canvas: surface, canvasContext: surface.getContext('2d')!, viewport: small }).promise
-      const blob = await new Promise<Blob | null>(resolve => surface.toBlob(resolve, 'image/png'))
-      if (!blob || mine !== generation) continue
-      thumbs.set(key, URL.createObjectURL(blob))
-      for (const entry of thumbsEl.querySelectorAll<HTMLElement>('button')) {
-        const owner = sheets[Number(entry.dataset.thumb)]
-        if (owner && `${owner.src}:${owner.turn}` === key && !entry.querySelector('img')) {
-          const img = document.createElement('img')
-          img.src = thumbs.get(key)!
-          img.alt = ''
-          img.draggable = false
-          entry.prepend(img)
-        }
-      }
-    } catch { /* The thumbnail is optional. */ } finally { rendering.delete(key) }
-  }
+async function paintThumb({ sheet, meta }: { sheet: Sheet; meta: Meta }) {
+  if (meta.source === undefined || meta.page === undefined) return null
+  const page = await sources[meta.source].pdf.getPage(meta.page + 1)
+  const rotation = (meta.base + sheet.turn) % 360
+  const viewport = page.getViewport({ scale: 1, rotation })
+  const small = page.getViewport({ scale: 160 / Math.max(viewport.width, viewport.height), rotation })
+  const surface = document.createElement('canvas')
+  surface.width = Math.ceil(small.width)
+  surface.height = Math.ceil(small.height)
+  await page.render({ canvas: surface, canvasContext: surface.getContext('2d')!, viewport: small }).promise
+  return new Promise<Blob | null>(resolve => surface.toBlob(resolve, 'image/png'))
+}
+
+function renderThumbs() {
+  thumbnails?.render(sheets.map(sheet => ({ sheet, meta: metas[sheet.src] })), current, extracting, grid, { page: tx('page'), select: tx('extractMark') })
 }
 
 // ---------- controls ----------
@@ -821,7 +790,13 @@ function syncControls() {
   const kind = activeKind()
   const note = propertyNote()
   const props = q('.ed-props')
-  props.classList.toggle('is-idle', !kind)
+  props.hidden = !kind || grid
+  const picture = selectedNote()
+  q('[data-picture]').parentElement!.hidden = grid || picture?.kind !== 'pic'
+  if (picture?.kind === 'pic') {
+    q<HTMLInputElement>('[data-opacity]').value = String(Math.round(picture.opacity * 100))
+    q('[data-opacity-value]').textContent = `${Math.round(picture.opacity * 100)}%`
+  }
   if (kind) {
     const [min, max] = limits[kind]
     sizeInput.min = String(min)
@@ -842,12 +817,30 @@ function syncControls() {
   q<HTMLSelectElement>('[data-shape]').value = isShape(tool) && tool !== 'cover' ? tool : ''
   q<HTMLSelectElement>('[data-stamp]').value = tool === 'stamp' ? stamp : ''
   q<HTMLButtonElement>('[data-act=delNote]').disabled = selected === undefined
-  q<HTMLButtonElement>('[data-act=earlier]').disabled = current === 0
-  q<HTMLButtonElement>('[data-act=later]').disabled = current >= sheets.length - 1
+  const ids = pageActionIds()
+  const positions = sheets.flatMap((sheet, index) => ids.has(sheet.id) ? [index] : [])
+  const contiguousFromStart = positions.every((at, index) => at === index)
+  const contiguousToEnd = positions.every((at, index) => at === sheets.length - positions.length + index)
+  const disabled = (key: Key, value: boolean) => { q<HTMLButtonElement>(`[data-act=${key}]`).disabled = value }
+  disabled('earlier', contiguousFromStart)
+  disabled('later', contiguousToEnd)
+  disabled('first', contiguousFromStart)
+  disabled('last', contiguousToEnd)
+  disabled('del', !ids.size)
+  disabled('duplicate', ids.size === 0)
+  disabled('rotl', ids.size === 0)
+  disabled('rotr', ids.size === 0)
+  q('[data-act=grid]').setAttribute('aria-pressed', String(grid))
+  q('[data-act=all]').hidden = !grid
+  q('[data-act=none]').hidden = !grid
+  disabled('all', extracting.size === sheets.length)
+  disabled('none', !extracting.size)
+  q('[data-selection]').textContent = grid ? `${tx('selectedPages')}: ${sheets.filter(sheet => extracting.has(sheet.id)).length}` : ''
   sheetEl.dataset.mode = tool
   stage.dataset.mode = tool
 }
 function setTool(next: Tool) {
+  if (grid && next !== 'select') toggleGrid()
   if (next !== 'select') applyOriginal?.()
   tool = next
   renderOriginals()
@@ -927,7 +920,8 @@ function startDrag(event: PointerEvent, note: TextNote | Picture, resize: boolea
     if (!moved) { snap(); moved = true }
     if (resize && note.kind === 'pic') {
       const ratio = origin.w / origin.h
-      note.w = Math.max(16, Math.min(fw - note.x, origin.w + x - start[0]))
+      const [local] = offset([0, 0], -note.angle * Math.PI / 180, x - start[0], y - start[1])
+      note.w = Math.max(16, Math.min(fw, origin.w + local))
       note.h = note.w / ratio
       if (element) { element.style.width = `${note.w * scale}px`; element.style.height = `${note.h * scale}px` }
     } else {
@@ -1027,19 +1021,19 @@ function blankPage(after: boolean) {
 }
 function duplicatePage() {
   applyOriginal?.()
-  const clone = structuredClone(sheets[current])
-  clone.id = nextId++
-  addSheets([clone], true)
+  const ids = pageActionIds()
+  const copies = sheets.filter(sheet => ids.has(sheet.id)).map(sheet => ({ ...structuredClone(sheet), id: nextId++ }))
+  if (copies.length) addSheets(copies, true)
 }
 async function importPdf(next: File) {
   const mine = generation
-  if (sources.reduce((total, source) => total + source.bytes.length, next.size) > 192 * 1024 ** 2) {
+  if (sources.reduce((total, source) => total + source.data.size, next.size) > 192 * 1024 ** 2) {
     say(t(language, copy.large))
     return
   }
   say(tx('opening'))
   try {
-    const candidate = await readSource(next, 0)
+    const candidate = await readSource(next, 0, mine)
     if (!candidate) return
     const dialog = q<HTMLDialogElement>('[data-import-dialog]')
     if (mine !== generation || dialog.open) { await candidate.source.close(); return }
@@ -1110,36 +1104,75 @@ q<HTMLFormElement>('[data-comment-form]').addEventListener('submit', event => {
   renderNotes()
   syncControls()
 })
+const pageActionIds = () => grid ? extracting : new Set(sheets[current] ? [sheets[current].id] : [])
+
+function toggleGrid() {
+  applyOriginal?.()
+  grid = !grid
+  groupAnchor = undefined
+  selected = undefined
+  renderAll()
+}
+function markPages(all: boolean) {
+  extracting.clear()
+  if (all) for (const sheet of sheets) extracting.add(sheet.id)
+  renderThumbs()
+  syncControls()
+}
+
 thumbsEl.addEventListener('change', event => {
   const mark = event.target as HTMLInputElement
   if (mark.dataset.extract === undefined) return
-  if (mark.checked) extracting.add(Number(mark.dataset.extract))
-  else extracting.delete(Number(mark.dataset.extract))
+  const id = Number(mark.dataset.extract)
+  if (mark.checked) extracting.add(id)
+  else extracting.delete(id)
+  groupAnchor = id
+  renderThumbs()
   syncControls()
 })
 
-function movePage(from: number, to: number) {
-  if (to < 0 || to >= sheets.length || from === to) return
+function rearrange(order: Sheet[]) {
+  if (order.every((sheet, index) => sheet === sheets[index])) return
   applyOriginal?.()
   snap()
-  const [sheet] = sheets.splice(from, 1)
-  sheets.splice(to, 0, sheet)
-  current = to
+  const active = sheets[current].id
+  sheets = order
+  current = sheets.findIndex(sheet => sheet.id === active)
   renderAll()
 }
+function moveEdge(end: boolean) {
+  const ids = pageActionIds()
+  rearrange(moveSelection(sheets, sheet => ids.has(sheet.id), end ? sheets.length : 0))
+}
+function moveNear(delta: -1 | 1) {
+  const ids = pageActionIds()
+  const copy = [...sheets]
+  for (let n = 0; n < copy.length; n++) {
+    const a = delta < 0 ? n : copy.length - n - 1
+    const b = a + delta
+    if (copy[b] && ids.has(copy[a].id) && !ids.has(copy[b].id)) [copy[a], copy[b]] = [copy[b], copy[a]]
+  }
+  rearrange(copy)
+}
 function turnPage(delta: number) {
+  const ids = pageActionIds()
+  if (!ids.size) return
   applyOriginal?.()
   snap()
-  const sheet = sheets[current]
-  sheet.turn = normalise(sheet.turn + delta)
+  for (const sheet of sheets) if (ids.has(sheet.id)) sheet.turn = normalise(sheet.turn + delta)
   renderAll()
 }
 function deletePage() {
-  if (sheets.length < 2) { say(tx('lastPage')); return }
+  const ids = pageActionIds()
+  if (sheets.length <= ids.size) { say(tx('lastPage')); return }
+  if (!ids.size) return
   applyOriginal?.()
   snap()
-  sheets.splice(current, 1)
-  current = Math.min(current, sheets.length - 1)
+  const active = sheets[current].id
+  sheets = sheets.filter(sheet => !ids.has(sheet.id))
+  for (const id of ids) extracting.delete(id)
+  const found = sheets.findIndex(sheet => sheet.id === active)
+  current = found < 0 ? Math.min(current, sheets.length - 1) : found
   selected = undefined
   renderAll()
 }
@@ -1153,149 +1186,161 @@ function goto(index: number) {
 
 thumbsEl.addEventListener('click', event => {
   const button = (event.target as Element).closest<HTMLElement>('[data-thumb]')
-  if (button) goto(Number(button.dataset.thumb))
+  if (!button) return
+  const index = Number(button.dataset.thumb)
+  if (!grid) { goto(index); return }
+  const id = sheets[index].id
+  const anchor = groupAnchor === undefined ? -1 : sheets.findIndex(sheet => sheet.id === groupAnchor)
+  if (event.shiftKey && anchor !== -1) {
+    const range = sheets.slice(Math.min(anchor, index), Math.max(anchor, index) + 1)
+    for (const sheet of range) extracting.add(sheet.id)
+  } else {
+    if (extracting.has(id)) extracting.delete(id)
+    else extracting.add(id)
+    groupAnchor = id
+  }
+  goto(index)
 })
-let dragFrom: number | undefined
-thumbsEl.addEventListener('dragstart', event => {
-  const item = (event.target as Element).closest<HTMLElement>('li')
-  if (!item || !event.dataTransfer) return
-  dragFrom = Number(item.dataset.index)
-  event.dataTransfer.effectAllowed = 'move'
-  event.dataTransfer.setData('application/x-versa-page', String(dragFrom))
-  item.classList.add('is-dragged')
-})
-thumbsEl.addEventListener('dragover', event => {
-  if (dragFrom === undefined) return
-  event.preventDefault()
-  thumbsEl.querySelectorAll('.drop-target').forEach(element => element.classList.remove('drop-target'))
-  ;(event.target as Element).closest('li')?.classList.add('drop-target')
-})
-thumbsEl.addEventListener('drop', event => {
-  if (dragFrom === undefined) return
-  event.preventDefault()
-  event.stopPropagation()
-  const item = (event.target as Element).closest<HTMLElement>('li')
-  const from = dragFrom
-  dragFrom = undefined
-  if (item) movePage(from, Number(item.dataset.index))
-})
-thumbsEl.addEventListener('dragend', () => {
-  dragFrom = undefined
-  thumbsEl.querySelectorAll('.is-dragged,.drop-target').forEach(element => element.classList.remove('is-dragged', 'drop-target'))
-})
-
 // ---------- images and signature ----------
-async function toBitmap(source: Blob): Promise<Bitmap | undefined> {
-  try {
-    const bytes = new Uint8Array(await source.arrayBuffer())
-    const png = bytes[0] === 0x89 && bytes[1] === 0x50
-    const jpg = bytes[0] === 0xff && bytes[1] === 0xd8
-    const decoded = await createImageBitmap(source)
-    let data = bytes
-    let type: 'png' | 'jpg' = jpg ? 'jpg' : 'png'
-    if ((!png && !jpg) || Math.max(decoded.width, decoded.height) > 2400) {
-      const factor = Math.min(1, 2400 / Math.max(decoded.width, decoded.height))
-      const surface = document.createElement('canvas')
-      surface.width = Math.round(decoded.width * factor)
-      surface.height = Math.round(decoded.height * factor)
-      surface.getContext('2d')!.drawImage(decoded, 0, 0, surface.width, surface.height)
-      type = jpg ? 'jpg' : 'png'
-      const blob = await new Promise<Blob | null>(resolve => surface.toBlob(resolve, type === 'jpg' ? 'image/jpeg' : 'image/png', .9))
-      if (!blob) return undefined
-      data = new Uint8Array(await blob.arrayBuffer())
-    }
-    const bitmap = { bytes: data, type, url: URL.createObjectURL(new Blob([Uint8Array.from(data).buffer], { type: type === 'jpg' ? 'image/jpeg' : 'image/png' })), w: decoded.width, h: decoded.height }
-    decoded.close()
-    return bitmap
-  } catch {
-    return undefined
-  }
-}
+const imageTools = () => import('./editor-images')
+const storePicture = (bitmap: Bitmap) => bitmaps.push(bitmap) - 1
+const pictureInput = q<HTMLInputElement>('[data-replace-pic]')
+
 async function addImage(blob: Blob) {
-  const bitmap = await toBitmap(blob)
-  if (!bitmap) { say(tx('badImage')); return }
   const sheet = sheets[current]
-  const [fw, fh] = frameOf(sheet)
-  snap()
-  bitmaps.push(bitmap)
-  const w = Math.min(fw * .4, bitmap.w)
-  const h = w * bitmap.h / bitmap.w
-  const note: Picture = { kind: 'pic', id: nextId++, x: (fw - w) / 2, y: Math.min((fh - h) / 2, fh - h), w, h, image: bitmaps.length - 1 }
-  sheet.notes.push(note)
-  selected = note.id
-  setTool('select')
-  renderNotes()
-  notesEl.querySelector<HTMLElement>(`[data-ann="${note.id}"]`)?.focus({ preventScroll: true })
+  const mine = generation
+  if (!sheet) return
+  try {
+    const bitmap = await (await imageTools()).decodePicture(blob)
+    if (mine !== generation || sheet !== sheets[current]) { URL.revokeObjectURL(bitmap.url); return }
+    const [fw, fh] = frameOf(sheet)
+    snap()
+    const w = Math.min(fw * .4, fh * .55 * bitmap.w / bitmap.h, bitmap.w)
+    const h = w * bitmap.h / bitmap.w
+    const note: Picture = { kind: 'pic', id: nextId++, x: (fw - w) / 2, y: (fh - h) / 2, w, h, image: storePicture(bitmap), angle: 0, opacity: 1 }
+    if (grid) toggleGrid()
+    sheet.notes.push(note)
+    selected = note.id
+    setTool('select')
+    renderNotes()
+    notesEl.querySelector<HTMLElement>(`[data-ann="${note.id}"]`)?.focus({ preventScroll: true })
+    return note
+  } catch { if (mine === generation) say(tx('badImage')) }
 }
 
-const padContext = () => pad.getContext('2d')!
-let ink: { x: number; y: number }[][] = []
-function clearPad() {
-  padContext().clearRect(0, 0, pad.width, pad.height)
-  ink = []
-  typed.value = ''
+const selectedPicture = () => {
+  const selected = selectedNote()
+  return selected?.kind === 'pic' ? selected : undefined
 }
-function padPoint(event: PointerEvent) {
-  const box = pad.getBoundingClientRect()
-  return { x: (event.clientX - box.left) * pad.width / box.width, y: (event.clientY - box.top) * pad.height / box.height }
-}
-pad.addEventListener('pointerdown', event => {
-  event.preventDefault()
-  pad.setPointerCapture(event.pointerId)
-  typed.value = ''
-  const stroke = [padPoint(event)]
-  ink.push(stroke)
-  const draw = (from: { x: number; y: number }, to: { x: number; y: number }) => {
-    const context = padContext()
-    context.lineWidth = 5
-    context.lineCap = 'round'
-    context.lineJoin = 'round'
-    context.strokeStyle = '#14213d'
-    context.beginPath()
-    context.moveTo(from.x, from.y)
-    context.lineTo(to.x + .01, to.y + .01)
-    context.stroke()
+let replacingPicture: Picture | undefined
+async function editPicture(action: string) {
+  const note = selectedPicture()
+  if (!note) return
+  if (action === 'replace') { replacingPicture = note; pictureInput.click(); return }
+  if (action === 'crop') {
+    const original = bitmaps[note.image]
+    const mine = generation
+    try {
+      const { requestCrop, cropPicture } = await imageTools()
+      if (mine !== generation || note !== selectedPicture() || app.querySelector('dialog[open]')) return
+      const crop = await requestCrop(app, original, language)
+      if (!crop?.some(Boolean)) return
+      const bitmap = await cropPicture(original, crop)
+      if (mine !== generation || note !== selectedPicture()) { URL.revokeObjectURL(bitmap.url); return }
+      applyCrop(note, bitmap, crop)
+    } catch { if (mine === generation) say(tx('badImage')) }
+    return
   }
-  draw(stroke[0], stroke[0])
-  const move = (next: PointerEvent) => { const point = padPoint(next); draw(stroke.at(-1)!, point); stroke.push(point) }
-  const end = () => { pad.removeEventListener('pointermove', move); pad.removeEventListener('pointerup', end); pad.removeEventListener('pointercancel', end) }
-  pad.addEventListener('pointermove', move)
-  pad.addEventListener('pointerup', end)
-  pad.addEventListener('pointercancel', end)
+  snap()
+  note.angle = normalise(note.angle + (action === 'right' ? 90 : -90))
+  renderNotes()
+  syncControls()
+}
+
+function applyCrop(note: Picture, bitmap: Bitmap, [left, top, right, bottom]: Crop) {
+  snap()
+  const w = note.w * (1 - left - right), h = note.h * (1 - top - bottom)
+  const centre: Point = [note.x + note.w / 2, note.y + note.h / 2]
+  const [cx, cy] = offset(centre, note.angle * Math.PI / 180, note.w * (left - right) / 2, note.h * (top - bottom) / 2)
+  Object.assign(note, { x: cx - w / 2, y: cy - h / 2, w, h, image: storePicture(bitmap) })
+  renderNotes()
+  syncControls()
+}
+
+async function replacePicture(blob: Blob, note: Picture) {
+  const mine = generation
+  try {
+    const bitmap = await (await imageTools()).decodePicture(blob)
+    if (mine !== generation || note !== selectedPicture()) { URL.revokeObjectURL(bitmap.url); return }
+    snap()
+    const fit = Math.min(note.w / bitmap.w, note.h / bitmap.h)
+    const w = fit * bitmap.w, h = fit * bitmap.h
+    Object.assign(note, { x: note.x + (note.w - w) / 2, y: note.y + (note.h - h) / 2, w, h, image: storePicture(bitmap) })
+    renderNotes()
+    syncControls()
+  } catch { if (mine === generation) say(tx('badImage')) }
+}
+
+pictureInput.addEventListener('change', () => {
+  const next = pictureInput.files?.[0]
+  pictureInput.value = ''
+  const note = replacingPicture
+  replacingPicture = undefined
+  if (next && note) void replacePicture(next, note)
 })
-typed.addEventListener('input', async () => {
-  ink = []
-  const context = padContext()
-  context.clearRect(0, 0, pad.width, pad.height)
-  if (!typed.value.trim()) return
-  await document.fonts.load('80px "Caveat Brush"').catch(() => [])
-  context.fillStyle = '#14213d'
-  context.font = '80px "Caveat Brush", cursive'
-  context.textBaseline = 'middle'
-  context.fillText(typed.value, 24, pad.height / 2, pad.width - 48)
+
+const opacityInput = q<HTMLInputElement>('[data-opacity]')
+let opacityEdit: Picture | undefined
+opacityInput.addEventListener('input', () => {
+  const note = selectedPicture()
+  if (!note) return
+  if (opacityEdit !== note) { snap(); opacityEdit = note }
+  note.opacity = Number(opacityInput.value) / 100
+  const element = notesEl.querySelector<HTMLElement>(`[data-ann="${note.id}"] img`)
+  if (element) element.style.opacity = String(note.opacity)
+  syncControls()
 })
+opacityInput.addEventListener('change', () => { opacityEdit = undefined })
+
+let signing = false
 async function useSignature() {
-  const context = padContext()
-  const { data } = context.getImageData(0, 0, pad.width, pad.height)
-  let x0 = pad.width, y0 = pad.height, x1 = 0, y1 = 0
-  for (let y = 0; y < pad.height; y++) for (let x = 0; x < pad.width; x++) {
-    if (data[(y * pad.width + x) * 4 + 3] > 8) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y) }
-  }
-  if (x1 <= x0 && y1 <= y0) return
-  const crop = document.createElement('canvas')
-  crop.width = x1 - x0 + 12
-  crop.height = y1 - y0 + 12
-  crop.getContext('2d')!.drawImage(pad, x0 - 6, y0 - 6, crop.width, crop.height, 0, 0, crop.width, crop.height)
-  const blob = await new Promise<Blob | null>(resolve => crop.toBlob(resolve, 'image/png'))
-  dialog.close()
-  if (blob) {
-    await addImage(blob)
-    const note = selectedNote()
-    if (note?.kind === 'pic') { note.w = Math.min(note.w, frameOf(sheets[current])[0] * .3); note.h = note.w * crop.height / crop.width; renderNotes() }
-  }
+  if (signing) return
+  signing = true
+  const mine = generation
+  try {
+    const { requestSignature } = await import('./editor-signature')
+    if (mine !== generation) return
+    const blob = await requestSignature(app, language)
+    if (!blob || mine !== generation) return
+    const note = await addImage(blob)
+    if (note) {
+      const w = Math.min(note.w, frameOf(sheets[current])[0] * .3)
+      note.h *= w / note.w
+      note.w = w
+      renderNotes()
+    }
+  } finally { signing = false }
 }
 
 // ---------- saving ----------
+function filenameFor(extract: boolean) {
+  const clean = documentName.trim().replace(/\.pdf$/i, '').replace(/[\x00-\x1f<>:"/\\|?*]/g, '_').replace(/[. ]+$/, '').trim()
+  let base = clean || tx('unnamed')
+  if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(base)) base = '_' + base
+  const suffix = extract ? (language === 'pt' ? ' - páginas' : ' - pages') : ''
+  const encoder = new TextEncoder()
+  let length = 0
+  const shortened = Array.from(base).filter(char => (length += encoder.encode(char).length) <= 200).join('').trimEnd()
+  return shortened + suffix + '.pdf'
+}
+let typingName = false
+nameInput.addEventListener('focus', () => { typingName = false })
+nameInput.addEventListener('input', () => {
+  if (!typingName) { snap(); typingName = true }
+  documentName = nameInput.value
+  syncControls()
+})
+
 async function save(extract = false) {
   if (!file || saving) return
   applyOriginal?.()
@@ -1304,22 +1349,17 @@ async function save(extract = false) {
   if (!pages.length) return
   const stamp = snapshot()
   const mine = generation
-  const name = localName(file, 'pdf', extract ? (language === 'pt' ? ' - páginas (Versa)' : ' - pages (Versa)') : undefined)
+  const name = filenameFor(extract)
   saving = true
   syncControls()
   say(tx('saving'))
   try {
-    const { writeEditedPdf } = await import('./editor-pdf')
-    const bytes = await writeEditedPdf(structuredClone(pages), [...metas], [...sources], [...bitmaps], structuredClone(formValues))
+    const bytes = await editInWorker({ action: 'save', sheets: pages, metas, sources: sources.map(source => source.data), bitmaps, values: formValues })
     if (mine !== generation) return
-    if (desktop) {
-      const header = new TextEncoder().encode(JSON.stringify(name) + '\n')
-      const payload = new Uint8Array(header.length + bytes.length)
-      payload.set(header)
-      payload.set(bytes, header.length)
-      if (!await invoke<boolean>('save_editor_pdf', payload)) { say(''); return }
+    if (native) {
+      if (!await native.save(name, bytes)) { say(''); return }
     } else {
-      const url = URL.createObjectURL(new Blob([Uint8Array.from(bytes).buffer], { type: 'application/pdf' }))
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
       const link = document.createElement('a')
       link.href = url
       link.download = name
@@ -1350,18 +1390,17 @@ app.addEventListener('click', event => {
   else if ('sample' in data) void open(samplePdf())
   else if (data.tool) setTool(data.tool as Tool)
   else if ('image' in data) picInput.click()
+  else if (data.picture) void editPicture(data.picture)
   else if ('cancelDialog' in data) button.closest('dialog')?.close()
-  else if ('sign' in data) { clearPad(); dialog.showModal(); typed.focus() }
+  else if ('sign' in data) void useSignature()
   else if (data.color) changeProperty((note, kind) => { prefs.color[kind] = data.color!; if (note) note.color = data.color! })
-  else if ('signUse' in data) void useSignature()
-  else if ('signClear' in data) clearPad()
-  else if ('signCancel' in data) dialog.close()
   else if (data.act) ({
     undo, redo, delNote: removeSelected, save: () => void save(), del: deletePage,
     pageBefore: () => blankPage(false), pageAfter: () => blankPage(true), duplicate: duplicatePage,
     importPages: () => q<HTMLInputElement>('[data-import]').click(), extract: () => void save(true),
     rotl: () => turnPage(-90), rotr: () => turnPage(90),
-    earlier: () => movePage(current, current - 1), later: () => movePage(current, current + 1),
+    earlier: () => moveNear(-1), later: () => moveNear(1), first: () => moveEdge(false), last: () => moveEdge(true),
+    grid: toggleGrid, all: () => markPages(true), none: () => markPages(false),
     zoomin: () => { zoom = Math.min(3, zoom * 1.25); renderAll() }, zoomout: () => { zoom = Math.max(.4, zoom / 1.25); renderAll() },
   } as Record<string, () => void>)[data.act]?.()
 })
@@ -1409,7 +1448,8 @@ window.addEventListener('keydown', event => {
     if (selected !== undefined) { event.preventDefault(); removeSelected() }
     else if (event.key === 'Delete' && target.closest('[data-thumb]')) { event.preventDefault(); deletePage() }
   } else if (event.key === 'Escape') {
-    if (selected !== undefined) select(undefined)
+    if (grid) toggleGrid()
+    else if (selected !== undefined) select(undefined)
     else setTool('select')
   }
 })
@@ -1427,31 +1467,28 @@ window.addEventListener('drop', event => {
   else void open(dropped)
 })
 window.addEventListener('beforeunload', event => { if (dirty || applyOriginal) { event.preventDefault(); event.returnValue = tx('leave') } })
-new ResizeObserver(() => { if (file && !work.hidden) { const next = fitScale(sheets[current]); if (Math.abs(next - scale) > .01) void showPage() } }).observe(stage)
+new ResizeObserver(() => { if (file && !work.hidden && !grid) { const next = fitScale(sheets[current]); if (Math.abs(next - scale) > .01) void showPage() } }).observe(stage)
 
-if (desktop) {
-  mountTitlebar(() => language)
-  const back = document.createElement('a')
-  back.className = 'text-link ed-back ed-native-back'
-  back.href = backUrl
-  back.innerHTML = `${icon('arrow', 16)} ${span('back')}`
-  q('main').prepend(back)
-  void listen<{ id: number | null; entries: { name: string }[] }>('versa-drag-drop', async event => {
-    const { id, entries } = event.payload
-    const first = entries[0]
-    if (id === null || !first) return
-    try {
-      const bytes = await invoke<ArrayBuffer>('read_file', { id, index: 0 })
-      const next = new File([bytes], first.name)
-      if (/\.(png|jpe?g|webp)$/i.test(first.name) && !work.hidden) await addImage(next)
+export function startEditor(platform?: EditorNative) {
+  native = platform
+  if (native) {
+    const backUrl = '/desktop.html?desktop=main'
+    native.titlebar(() => language)
+    const back = document.createElement('a')
+    back.className = 'text-link ed-back ed-native-back'
+    back.href = backUrl
+    back.innerHTML = `${icon('arrow', 16)} ${span('back')}`
+    q('main').prepend(back)
+    native.onDrop(async next => {
+      if (/\.(png|jpe?g|webp)$/i.test(next.name) && !work.hidden) await addImage(next)
       else await open(next)
-    } catch { say(t(language, copy.damaged)) }
-  }, { target: { kind: 'Window', label: 'main' } }).catch(() => {})
-}
-applyTheme()
-applyLanguage()
-syncControls()
-if (location.hash === '#abrir') {
-  history.replaceState(null, '', location.pathname)
-  void takeHandOff().then(next => { if (next) void open(next) })
+    }, () => say(t(language, copy.damaged)))
+  }
+  applyTheme()
+  applyLanguage()
+  syncControls()
+  if (location.hash === '#abrir') {
+    history.replaceState(null, '', location.pathname)
+    void takeHandOff().then(next => { if (next) void open(next) })
+  }
 }

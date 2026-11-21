@@ -3,6 +3,7 @@ import { gzipSync } from 'node:zlib'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  worker: { format: 'es' },
   build: {
     rollupOptions: {
       input: ["index.html", "desktop.html", "windows.html", "editor.html", "desktop-editor.html"],
