@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { installerUrl } from '../src/release'
+import { installerUrl, releaseFiles, version } from '../src/release'
 
 test('the published worker has JavaScript MIME and the example PDF converts', async ({ page }) => {
   const url = process.env.VERSA_DEPLOYMENT_URL
@@ -42,19 +42,17 @@ test('the published editor opens the example PDF with the worker and saves a cop
   expect(errors).toEqual([])
 })
 
-test('the published downloads page links to the released EXE', async ({ page }) => {
+test('the published site links to the current Windows release', async ({ page }) => {
   const url = process.env.VERSA_DEPLOYMENT_URL
   test.skip(!url || !process.env.VERSA_EXPECT_INSTALLER, 'Download verification requires the published site.')
   test.setTimeout(240_000)
   const downloads = new URL('/windows.html', url).href
-  await expect.poll(async () => {
-    try {
-      const response = await page.request.get(downloads, { timeout: 10_000 })
-      return response.ok() && (await response.text()).includes('id="download-app"')
-    } catch {
-      return false
-    }
-  }, { timeout: 210_000, intervals: [2000, 6000, 12000, 20000] }).toBe(true)
-  await page.goto(downloads)
-  await expect(page.getByRole('link', { name: /^Descarregar \.exe/ })).toHaveAttribute('href', installerUrl)
+  await expect(async () => {
+    await page.goto(downloads, { waitUntil: 'domcontentloaded', timeout: 10_000 })
+    await expect(page.getByRole('link', { name: /^Descarregar \.exe/ })).toHaveAttribute('href', installerUrl, { timeout: 3000 })
+  }).toPass({ timeout: 210_000, intervals: [2000, 6000, 12000, 20000] })
+  await expect(page.getByRole('link', { name: /^Descarregar \.msi/ })).toHaveAttribute('href', `${releaseFiles}/Versa-${version}-x64.msi`)
+  await expect(page.getByRole('link', { name: 'SHA-256' })).toHaveAttribute('href', `${releaseFiles}/SHA256SUMS.txt`)
+  await page.goto(url!)
+  await expect(page.getByRole('link', { name: 'Descarregar para Windows' })).toHaveAttribute('href', installerUrl)
 })
