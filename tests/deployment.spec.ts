@@ -26,6 +26,22 @@ test('the published worker has JavaScript MIME and the example PDF converts', as
   expect(errors).toEqual([])
 })
 
+test('the published editor opens the example PDF with the worker and saves a copy', async ({ page }) => {
+  const url = process.env.VERSA_DEPLOYMENT_URL
+  test.skip(!url, 'Set VERSA_DEPLOYMENT_URL to test the published site.')
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto(new URL('/editor.html', url).href)
+  await page.getByRole('button', { name: 'Experimentar com exemplo' }).click()
+  await expect(page.locator('[data-thumbs] img')).toHaveCount(1)
+  const pending = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Guardar PDF' }).click()
+  expect((await pending).suggestedFilename()).toBe('ficha-de-exemplo (Versa).pdf')
+  expect(errors).toEqual([])
+})
+
 test('the published downloads page links to the released EXE', async ({ page }) => {
   const url = process.env.VERSA_DEPLOYMENT_URL
   test.skip(!url || !process.env.VERSA_EXPECT_INSTALLER, 'Download verification requires the published site.')

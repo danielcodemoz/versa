@@ -58,3 +58,13 @@ export const kindFromName = (name: string): Kind | undefined => {
   const extension = name.includes('.') ? name.split('.').at(-1)?.toLowerCase().replace(/^jpeg$/, 'jpg') : undefined
   return ['pdf', 'docx', 'xlsx', 'pptx', ...images].find(kind => kind === extension) as Kind | undefined
 }
+/** The one conversion worth offering first for a set of dropped files. */
+export const suggest = (kinds: readonly Kind[]): Recipe | undefined => {
+  if (!kinds.length) return undefined
+  const first = kinds[0]
+  const id = kinds.every(kind => kind === 'pdf') ? (kinds.length > 1 ? 'pdf-merge' : 'pdf-word')
+    : kinds.every(kind => images.includes(kind as typeof images[number])) ? 'image-pdf'
+    : kinds.length === 1 ? ({ docx: 'word-pdf', xlsx: 'excel-pdf', pptx: 'slides-pdf' } as Partial<Record<Kind, string>>)[first] : undefined
+  const recipe = recipes.find(entry => entry.id === id)
+  return recipe && available(recipe, kinds) ? recipe : undefined
+}
