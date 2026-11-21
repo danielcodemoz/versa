@@ -1,3 +1,24 @@
+; Modern UI uses ^Font for body text and for its 12 pt, bold welcome and finish titles.
+SetFont "Segoe UI" 9
+!define MUI_BGCOLOR "FFFFFF"
+!define MUI_TEXTCOLOR "172825"
+InstallColors 172825 FFFFFF
+
+!define MUI_CUSTOMFUNCTION_GUIINIT VersaHeaderColors
+!define MUI_CUSTOMFUNCTION_UNGUIINIT un.VersaHeaderColors
+
+!macro VersaHeaderColors PREFIX
+Function ${PREFIX}VersaHeaderColors
+  ; Modern UI's header subtitle control. The header title keeps its bold font and ink.
+  Push $0
+  GetDlgItem $0 $HWNDPARENT 1038
+  SetCtlColors $0 "434950" "${MUI_BGCOLOR}"
+  Pop $0
+FunctionEnd
+!macroend
+!insertmacro VersaHeaderColors ""
+!insertmacro VersaHeaderColors "un."
+
 ; Tauri includes this file before declaring its Modern UI pages and loading MUI_LANGUAGE.
 ; Use the Windows language IDs here because LANG_PORTUGUESE and LANG_ENGLISH are defined later.
 LangString VersaInstallerCaption 2070 "Instalação do Versa"
