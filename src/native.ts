@@ -4,6 +4,7 @@ import { kindFromName, t, type Language, type Recipe } from '../packages/engine/
 import type { ConversionResult } from '../packages/engine'
 import { inspectFiles, type Preflight, type Problem } from '../packages/engine/preflight'
 import type { mountWheel } from './wheel'
+import { mountTitlebar } from './native-window'
 
 type Wheel = ReturnType<typeof mountWheel>
 interface Entry { name: string; size: number }
@@ -50,13 +51,19 @@ async function nativeOffice(recipe: Recipe, files: File[]): Promise<ConversionRe
 export async function mountNative(wheel: Wheel, language: () => Language, overlay: boolean) {
   if (!isTauri()) return
   document.documentElement.classList.add('native-app')
+  if (!overlay) mountTitlebar(language)
+  // The native drop target owns Explorer files. Keep any drop delivered to the
+  // webview from navigating away from the desktop UI.
+  window.addEventListener('dragover', event => event.preventDefault(), true)
+  window.addEventListener('drop', event => event.preventDefault(), true)
   const shell = document.querySelector<HTMLElement>('.native-settings')!
   let history: History[] = []
   let startup = false
   let folder: string | null = null
   let sound = localStorage.getItem('versa-sound') === 'on'
   let audio: AudioContext | undefined
-  let current: { signature: string; pending: Promise<{ files: File[]; verdict: Preflight }> } | undefined
+  let current: { id: number; signature: string; pending: Promise<{ files: File[]; verdict: Preflight }> } | undefined
+  let readVersion = 0
 
   const save = (id: number) => ({
     office: nativeOffice,
@@ -95,22 +102,24 @@ export async function mountNative(wheel: Wheel, language: () => Language, overla
   }
 
   async function use(offer: Offer, drop: boolean) {
+    const version = ++readVersion
     const target = drop ? wheel.nativeTarget(...viewport(offer.x, offer.y)) : undefined
+    const hovered = current
+    current = undefined
     if (offer.problem || offer.id === null) {
       wheel.lock(offer.problem ?? 'damaged')
       return
     }
     const signature = JSON.stringify(offer.entries)
-    const pending = drop && current?.signature === signature ? current.pending : read(offer)
+    const pending = drop && hovered?.id === offer.id && hovered.signature === signature ? hovered.pending : read(offer)
     wheel.nativeReading()
     try {
       const { files, verdict } = await pending
+      if (version !== readVersion) return
       if (verdict.problem && files.length !== offer.entries.length) wheel.lock(verdict.problem)
       else await wheel.stageNative(files, save(offer.id), verdict, target)
     } catch {
-      wheel.lock('damaged')
-    } finally {
-      current = undefined
+      if (version === readVersion) wheel.lock('damaged')
     }
   }
 
@@ -121,6 +130,7 @@ export async function mountNative(wheel: Wheel, language: () => Language, overla
     } catch { wheel.lock('damaged') }
   })
   wheel.setDismiss(() => invoke('hide'))
+  const events = { target: { kind: 'Window' as const, label: overlay ? 'gesture' : 'main' } }
   await Promise.all([
     listen<Offer>('versa-drag-enter', event => {
       const offer = event.payload
@@ -128,17 +138,17 @@ export async function mountNative(wheel: Wheel, language: () => Language, overla
       wheel.nativeEnter(kinds.every(kind => kind !== undefined) ? kinds : [], ...viewport(offer.x, offer.y), offer.problem ?? (kinds.includes(undefined) ? 'type' : undefined))
       if (offer.id === null || offer.problem || kinds.includes(undefined)) return
       const pending = read(offer)
-      current = { signature: JSON.stringify(offer.entries), pending }
+      current = { id: offer.id, signature: JSON.stringify(offer.entries), pending }
       void pending.then(({ verdict }) => {
         if (current?.pending === pending) wheel.nativeInspect(verdict)
       }, () => {
         if (current?.pending === pending) wheel.nativeInspect({ kinds: [], problem: 'damaged' })
       })
-    }),
-    listen<[number, number]>('versa-drag-over', event => wheel.nativeOver(...viewport(...event.payload))),
-    listen<Offer>('versa-drag-drop', event => void use(event.payload, true)),
-    listen('versa-drag-leave', () => { current = undefined; wheel.nativeLeave() }),
-    listen('versa-wake', () => wheel.reset()),
+    }, events),
+    listen<[number, number]>('versa-drag-over', event => wheel.nativeOver(...viewport(...event.payload)), events),
+    listen<Offer>('versa-drag-drop', event => void use(event.payload, true), events),
+    listen('versa-drag-leave', () => { current = undefined; wheel.nativeLeave() }, events),
+    listen('versa-wake', () => wheel.reset(), events),
   ])
   const text = (pt: string, en: string) => t(language(), [pt, en])
   const paint = () => {
@@ -218,7 +228,7 @@ export async function mountNative(wheel: Wheel, language: () => Language, overla
     if (event.key === 'versa-sound') sound = event.newValue === 'on'
   })
   if (!overlay) {
-    await listen('versa-history', () => void refresh())
+    await listen('versa-history', () => void refresh(), events)
     await refresh()
     new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
   }

@@ -2,6 +2,7 @@
 
 mod files;
 mod gesture;
+mod panel;
 #[cfg(windows)]
 mod windows;
 
@@ -20,7 +21,8 @@ use tauri::{
     ipc::{InvokeBody, Request, Response},
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, DragDropEvent, Emitter, Manager, State, WebviewEvent, WebviewWindow, WindowEvent,
+    AppHandle, DragDropEvent, Emitter, Manager, PhysicalPosition, State, WebviewWindow, Window,
+    WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_dialog::DialogExt as _;
@@ -35,6 +37,7 @@ struct Desktop {
     offer: AtomicBool,
     processing: AtomicBool,
     inputs: Mutex<BTreeMap<u64, Input>>,
+    dragging: Mutex<BTreeMap<String, u64>>,
     history: Mutex<VecDeque<History>>,
     converting: Mutex<HashSet<String>>,
     folder: Mutex<Option<PathBuf>>,
@@ -65,7 +68,13 @@ struct History {
     path: PathBuf,
 }
 
-fn record(app: &AppHandle, label: &str, paths: &[PathBuf], x: f64, y: f64, commit: bool) -> Offer {
+fn record(
+    app: &AppHandle,
+    label: &str,
+    paths: &[PathBuf],
+    position: PhysicalPosition<f64>,
+    previous: Option<u64>,
+) -> Offer {
     let mut entries = Vec::new();
     let mut size = 0u64;
     let mut problem = paths.is_empty().then_some("type");
@@ -95,30 +104,79 @@ fn record(app: &AppHandle, label: &str, paths: &[PathBuf], x: f64, y: f64, commi
     if size > files::MAX_BYTES || paths.len() > 256 {
         problem = Some("large");
     }
-    let id = if commit && problem.is_none() {
+    let id = if problem.is_none() {
         let state = app.state::<Desktop>();
         let mut inputs = state.inputs.lock().expect("input lock");
-        let id = state.serial.fetch_add(1, Ordering::Relaxed) + 1;
-        while inputs.len() >= 6 {
-            inputs.pop_first();
-        }
-        inputs.insert(
-            id,
-            Input {
-                window: label.to_owned(),
-                paths: paths.to_vec(),
-            },
-        );
-        Some(id)
+        previous
+            .filter(|id| {
+                inputs
+                    .get(id)
+                    .is_some_and(|input| input.window == label && input.paths == paths)
+            })
+            .or_else(|| {
+                let id = state.serial.fetch_add(1, Ordering::Relaxed) + 1;
+                while inputs.len() >= 6 {
+                    inputs.pop_first();
+                }
+                inputs.insert(
+                    id,
+                    Input {
+                        window: label.to_owned(),
+                        paths: paths.to_vec(),
+                    },
+                );
+                Some(id)
+            })
     } else {
         None
     };
     Offer {
         id,
         entries,
-        x,
-        y,
+        x: position.x,
+        y: position.y,
         problem,
+    }
+}
+
+fn window_drag(window: &Window, event: &DragDropEvent) {
+    let app = window.app_handle();
+    let label = window.label();
+    let state = app.state::<Desktop>();
+    match event {
+        DragDropEvent::Enter { paths, position } => {
+            if label == "gesture" {
+                state.offer.store(true, Ordering::Relaxed);
+            }
+            #[cfg(windows)]
+            let position = windows::drag_enter_client_position(window, *position);
+            #[cfg(not(windows))]
+            let position = *position;
+            let offer = record(app, label, paths, position, None);
+            let mut dragging = state.dragging.lock().expect("drag lock");
+            dragging.remove(label);
+            if let Some(id) = offer.id {
+                dragging.insert(label.to_owned(), id);
+            }
+            drop(dragging);
+            let _ = app.emit_to(label, "versa-drag-enter", offer);
+        }
+        DragDropEvent::Over { position } => {
+            let _ = app.emit_to(label, "versa-drag-over", (position.x, position.y));
+        }
+        DragDropEvent::Drop { paths, position } => {
+            if label == "gesture" {
+                state.processing.store(true, Ordering::Relaxed);
+            }
+            let previous = state.dragging.lock().expect("drag lock").remove(label);
+            let offer = record(app, label, paths, *position, previous);
+            let _ = app.emit_to(label, "versa-drag-drop", offer);
+        }
+        DragDropEvent::Leave => {
+            state.dragging.lock().expect("drag lock").remove(label);
+            let _ = app.emit_to(label, "versa-drag-leave", ());
+        }
+        _ => {}
     }
 }
 
@@ -152,7 +210,7 @@ async fn pick(app: AppHandle, window: WebviewWindow) -> Result<Option<Offer>, St
                 .into_iter()
                 .filter_map(|file| file.into_path().ok())
                 .collect();
-            record(&app, &label, &paths, 0.0, 0.0, true)
+            record(&app, &label, &paths, PhysicalPosition::default(), None)
         }))
     })
     .await
@@ -506,6 +564,7 @@ fn main() {
                 .build(),
         )
         .plugin(tauri_plugin_notification::init())
+        .plugin(panel::state_plugin())
         .invoke_handler(tauri::generate_handler![
             pick,
             read_file,
@@ -522,6 +581,9 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             load_desktop(&handle);
+            if let Some(window) = handle.get_webview_window("main") {
+                panel::place(&window);
+            }
             let actions = handle.clone();
             app.notification().on_action(move |action| {
                 if let Some((verb, id)) = action.action_id().split_once('-') {
@@ -584,44 +646,16 @@ fn main() {
             }
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
                     hide_window(window.app_handle(), &webview);
                 }
             }
-        })
-        .on_webview_event(|view, event| {
-            let WebviewEvent::DragDrop(event) = event else {
-                return;
-            };
-            let app = view.app_handle();
-            let label = view.label();
-            let state = app.state::<Desktop>();
-            match event {
-                DragDropEvent::Enter { paths, position } => {
-                    if label == "gesture" {
-                        state.offer.store(true, Ordering::Relaxed);
-                    }
-                    let offer = record(app, label, paths, position.x, position.y, true);
-                    let _ = app.emit_to(label, "versa-drag-enter", offer);
-                }
-                DragDropEvent::Over { position } => {
-                    let _ = app.emit_to(label, "versa-drag-over", (position.x, position.y));
-                }
-                DragDropEvent::Drop { paths, position } => {
-                    if label == "gesture" {
-                        state.processing.store(true, Ordering::Relaxed);
-                    }
-                    let offer = record(app, label, paths, position.x, position.y, true);
-                    let _ = app.emit_to(label, "versa-drag-drop", offer);
-                }
-                DragDropEvent::Leave => {
-                    let _ = app.emit_to(label, "versa-drag-leave", ());
-                }
-                _ => {}
-            }
+            // Tauri dispatches native drops on a full-window webview as window events.
+            WindowEvent::DragDrop(event) => window_drag(window, event),
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("Versa could not start");
