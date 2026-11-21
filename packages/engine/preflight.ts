@@ -1,4 +1,4 @@
-import { kindFromName, type Kind } from './catalog'
+import { kindFromFile, type Kind } from './catalog'
 
 export type Problem = 'empty' | 'large' | 'type' | 'damaged' | 'password' | 'wrong-password'
 export interface Preflight { kinds: Kind[]; problem?: Problem }
@@ -11,7 +11,7 @@ export async function inspectFiles(files: File[], password?: string): Promise<Pr
   if (files.reduce((sum, file) => sum + file.size, 0) > limit) return { kinds, problem: 'large' }
   for (const file of files) {
     if (!file.size) return { kinds, problem: 'empty' }
-    const kind = kindFromName(file.name)
+    const kind = kindFromFile(file)
     if (!kind) return { kinds, problem: 'type' }
     try {
       const head = new Uint8Array(await file.slice(0, 1024).arrayBuffer())

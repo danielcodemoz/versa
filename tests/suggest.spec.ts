@@ -20,14 +20,13 @@ test('suggests one conversion for each kind of drop', () => {
   expect(recipes.some(recipe => recipe.id === 'pdf-word')).toBe(true)
 })
 
-/** Drops files on the page body (not on the wheel), like a person dropping anywhere. */
-async function dropAnywhere(page: Page, files: { name: string; type: string; bytes: number[] }[]) {
+async function dropFiles(page: Page, files: { name: string; type: string; bytes: number[] }[], selector = '#faq') {
   const data = await page.evaluateHandle(items => {
     const transfer = new DataTransfer()
     for (const item of items) transfer.items.add(new File([new Uint8Array(item.bytes)], item.name, { type: item.type }))
     return transfer
   }, files)
-  const target = page.locator('#faq')
+  const target = page.locator(selector)
   for (const type of ['dragenter', 'dragover', 'drop']) await target.dispatchEvent(type, { dataTransfer: data })
 }
 const pdfFile = async (name = 'ficha.pdf') => ({ name, type: 'application/pdf', bytes: [...new Uint8Array(await samplePdf().arrayBuffer())] })
@@ -37,7 +36,7 @@ test('a PDF dropped anywhere offers the conversion and Enter runs it', async ({ 
   page.on('pageerror', error => errors.push(error.message))
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
-  await dropAnywhere(page, [await pdfFile()])
+  await dropFiles(page, [await pdfFile()])
   const suggestion = page.getByRole('region', { name: 'Sugestão' })
   await expect(suggestion).toBeVisible()
   await expect(suggestion.getByRole('button', { name: /Converter PDF → DOCX/ })).toBeFocused()
@@ -55,7 +54,7 @@ test('the suggestion can be clicked, adapts to several images, and hides when a 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
   const image = (name: string) => ({ name, type: 'image/png', bytes: [...png] })
-  await dropAnywhere(page, [image('a.png'), image('b.png')])
+  await dropFiles(page, [image('a.png'), image('b.png')])
   const suggestion = page.getByRole('region', { name: 'Sugestão' })
   await expect(suggestion.getByRole('button', { name: /2 ficheiros → PDF/ })).toBeVisible()
   await expect(suggestion.getByRole('button', { name: 'Editar este PDF' })).toHaveCount(0)
@@ -64,18 +63,19 @@ test('the suggestion can be clicked, adapts to several images, and hides when a 
   await page.getByRole('button', { name: 'Voltar às categorias' }).click()
   await expect(suggestion).toBeVisible()
   await page.getByRole('button', { name: 'Limpar ficheiros' }).click()
-  await dropAnywhere(page, [image('c.png')])
+  await dropFiles(page, [image('c.png')])
   await suggestion.getByRole('button', { name: /PNG → PDF/ }).click()
   await expect(page.getByRole('status')).toHaveText('Conversão concluída')
 })
 
 test('mixed or protected drops get no suggestion', async ({ page }) => {
   await page.goto('/')
-  await dropAnywhere(page, [await pdfFile(), { name: 'a.png', type: 'image/png', bytes: [...png] }])
+  await dropFiles(page, [await pdfFile(), { name: 'a.png', type: 'image/png', bytes: [...png] }], '.wheel-centre')
   await expect(page.getByRole('status')).toHaveText('Ficheiros verificados')
+  await expect(page.locator('.wheel')).not.toHaveClass(/is-subring/)
   await expect(page.getByRole('region', { name: 'Sugestão' })).toBeHidden()
   await page.getByRole('button', { name: 'Limpar ficheiros' }).click()
-  await dropAnywhere(page, [{ name: 'quebrado.pdf', type: 'application/pdf', bytes: [1, 2, 3] }])
+  await dropFiles(page, [{ name: 'quebrado.pdf', type: 'application/pdf', bytes: [1, 2, 3] }])
   await expect(page.getByRole('status')).toContainText('incompleto ou danificado')
   await expect(page.getByRole('region', { name: 'Sugestão' })).toBeHidden()
 })
@@ -85,7 +85,7 @@ test('"Editar este PDF" opens the dropped file in the editor without leaving the
   page.on('request', request => requests.push(request.url()))
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
-  await dropAnywhere(page, [await pdfFile('turma.pdf')])
+  await dropFiles(page, [await pdfFile('turma.pdf')])
   await page.getByRole('button', { name: 'Editar este PDF' }).click()
   await expect(page).toHaveURL(/\/editor\.html$/)
   await expect(page.locator('[data-total]')).toHaveText('1')
@@ -98,7 +98,7 @@ test('the suggestion fits at 390px and the editor is linked from the home page',
   await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
-  await dropAnywhere(page, [await pdfFile()])
+  await dropFiles(page, [await pdfFile()])
   const button = page.getByRole('button', { name: /Converter PDF → DOCX/ })
   await expect(button).toBeVisible()
   const box = (await button.boundingBox())!
@@ -107,4 +107,44 @@ test('the suggestion fits at 390px and the editor is linked from the home page',
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
   await expect(page.getByRole('link', { name: 'Abrir o editor de PDF' })).toHaveAttribute('href', '/editor.html')
   expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+})
+
+test('a PDF dropped on the initial wheel is recognised by MIME and awaits an action', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+  await dropFiles(page, [await pdfFile('ficha')], '.wheel-centre')
+  await expect(page.getByRole('status')).toHaveText('Ficheiros verificados')
+  await expect(page.locator('.wheel')).toHaveClass(/is-subring/)
+  await expect(page.locator('.wheel-centre')).toContainText('ficha')
+  await expect(page.getByRole('region', { name: 'Sugestão' })).toBeHidden()
+  await page.locator('.wheel-buttons [data-slice=pdf-text]').click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Descarregar', exact: true }).click()
+  expect((await download).suggestedFilename()).toBe('ficha (Versa).txt')
+})
+
+test('the initial wheel routes image, document and slide extensions and keeps unknown files in categories', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+  const selector = '.wheel-centre'
+  await dropFiles(page, [
+    { name: 'a.PNG', type: '', bytes: [...png] },
+    { name: 'b', type: 'image/png', bytes: [...png] },
+  ], selector)
+  await expect(page.getByRole('status')).toHaveText('Ficheiros verificados')
+  await expect(page.locator('.wheel-buttons [data-slice=image-pdf]')).toBeEnabled()
+  await page.getByRole('button', { name: 'Voltar às categorias' }).click()
+
+  for (const [name, action] of [
+    ['a.doc', 'word-pdf'], ['a.docx', 'word-pdf'], ['a.odt', 'word-pdf'], ['a.txt', 'word-pdf'],
+    ['a.ppt', 'slides-pdf'], ['a.pptx', 'slides-pdf'],
+  ]) {
+    await dropFiles(page, [{ name, type: '', bytes: [1] }], selector)
+    await expect(page.locator(`.wheel-buttons [data-slice=${action}]`)).toHaveAttribute('aria-disabled', 'true')
+    await page.getByRole('button', { name: 'Voltar às categorias' }).click()
+  }
+  await dropFiles(page, [{ name: 'a.zip', type: 'application/zip', bytes: [1] }], selector)
+  await expect(page.locator('.wheel')).not.toHaveClass(/is-subring/)
+  await expect(page.locator('.wheel-buttons [data-slice=pdf]')).toBeVisible()
 })
