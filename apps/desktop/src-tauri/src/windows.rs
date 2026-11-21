@@ -11,9 +11,10 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Window};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HWND, INVALID_HANDLE_VALUE, POINT},
+    Graphics::Gdi::ScreenToClient,
     System::{
         Diagnostics::ToolHelp::{
             CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
@@ -27,6 +28,25 @@ use windows_sys::Win32::{
         WindowsAndMessaging::{GetAncestor, GetClassNameW, GetCursorPos, WindowFromPoint, GA_ROOT},
     },
 };
+
+pub fn drag_enter_client_position(
+    window: &Window,
+    position: PhysicalPosition<f64>,
+) -> PhysicalPosition<f64> {
+    // Wry 0.57 reports Windows DragEnter in screen coordinates, unlike Over and Drop.
+    let Ok(handle) = window.hwnd() else {
+        return position;
+    };
+    let mut cursor = POINT {
+        x: position.x as i32,
+        y: position.y as i32,
+    };
+    if unsafe { ScreenToClient(handle.0, &mut cursor) } != 0 {
+        PhysicalPosition::new(f64::from(cursor.x), f64::from(cursor.y))
+    } else {
+        position
+    }
+}
 
 pub fn reject_administrator() -> bool {
     if unsafe { windows_sys::Win32::UI::Shell::IsUserAnAdmin() } == 0 {

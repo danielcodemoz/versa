@@ -129,8 +129,11 @@ h1{font-size:clamp(4rem,8.1vw,8rem);line-height:.87}
 .pick{background:var(--marker);color:#1a1a2e}
 .quiet{border:0;background:none;color:var(--ink);padding:8px 3px;font-weight:750;font-size:.8rem;text-decoration:underline;text-underline-offset:3px}
 .quiet:hover{color:var(--red)}
-.wheel-back{display:flex;gap:5px;align-items:center;margin:5px auto 0}
-.wheel-back.is-back svg{rotate:180deg}
+.wheel-back,.wheel-clear{display:flex;gap:5px;align-items:center}
+.wheel-back{min-height:36px;text-align:right}
+.wheel-back svg,.wheel-clear svg{flex:none}
+.wheel-back svg{rotate:180deg}
+.wheel-clear{margin:5px auto 0}
 .wheel-status{font:.72rem var(--mono);text-align:center;color:var(--muted);margin-top:5px}
 .wheel-status:empty{display:none}
 .wheel-message{background:var(--surface);border:1px solid var(--ink);border-radius:7px;margin-top:8px;padding:11px;box-shadow:2px 2px 0 var(--heavy);font-size:.85rem}
@@ -274,7 +277,7 @@ footer p a{font-weight:800}
 .gesture .masthead{display:none}
 .gesture .hero-grid{width:100%;height:100svh;padding:0;display:grid;place-items:center}
 .gesture .lab,.gesture .lab.is-dragging{width:100%;height:100%;display:grid;place-items:center;padding:0;border:0;box-shadow:none;background:none;animation:none}
-.gesture .lab::before,.gesture .lab::after,.gesture .lab-heading,.gesture .wheel-note,.gesture .note-arrow,.gesture .wheel-spark,.gesture .wheel-controls,.gesture .wheel-back,.gesture .native-settings{display:none}
+.gesture .lab::before,.gesture .lab::after,.gesture .lab-heading,.gesture .wheel-note,.gesture .note-arrow,.gesture .wheel-spark,.gesture .wheel-controls,.gesture .wheel-clear,.gesture .native-settings{display:none}
 .gesture .wheel-stage{width:min(100vw - 18px, 100svh - 60px,450px);border-radius:50%;background:color-mix(in srgb,var(--panel) 63%,transparent);backdrop-filter:blur(12px)}
 .gesture .wheel{width:100%}
 .gesture-close{position:absolute;right:13px;top:12px;z-index:7}

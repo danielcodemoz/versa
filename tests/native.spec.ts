@@ -4,6 +4,8 @@ import { samplePdf } from '../src/sample'
 async function mockWindows(page: Page) {
   const source = Array.from(new Uint8Array(await samplePdf().arrayBuffer()))
   await page.addInitScript(source => {
+    let maximized = false
+    const label = location.search.includes('gesture') ? 'gesture' : 'main'
     const callbacks = new Map<number, (event: { payload: unknown }) => void>()
     const listeners = new Map<string, number>()
     const calls: Array<{ command: string; header?: string; content?: string }> = []
@@ -12,13 +14,17 @@ async function mockWindows(page: Page) {
       mockCalls: calls,
       mockOffer: (event: string, payload: unknown) => callbacks.get(listeners.get(event)!)?.({ payload }),
       __TAURI_INTERNALS__: {
+        metadata: { currentWindow: { label } },
         transformCallback(callback: (event: { payload: unknown }) => void) {
           const id = callbacks.size + 1
           callbacks.set(id, callback)
           return id
         },
-        async invoke(command: string, args: { event: string; handler: number } | Uint8Array) {
+        async invoke(command: string, args: { event: string; handler: number; target?: { kind: string; label: string } } | Uint8Array) {
           if (command === 'plugin:event|listen' && !(args instanceof Uint8Array)) {
+            if (args.event.startsWith('versa-drag-') && (args.target?.kind !== 'Window' || args.target.label !== label)) {
+              throw new Error('Native drag listeners must target their own window')
+            }
             listeners.set(args.event, args.handler)
             return args.handler
           }
@@ -29,6 +35,8 @@ async function mockWindows(page: Page) {
             return { id: 50, name: 'ficha (Versa).txt' }
           }
           calls.push({ command })
+          if (command === 'plugin:window|is_maximized') return maximized
+          if (command === 'plugin:window|toggle_maximize') maximized = !maximized
           if (command === 'pick') return { id: 12, entries: [{ name: 'ficha.pdf', size: source.length }], x: 0, y: 0, problem: null }
           if (command === 'read_file') return new Uint8Array(source).buffer
           if (command === 'history') return [{ id: 44, name: 'anterior (Versa).pdf' }]
@@ -83,6 +91,57 @@ test('the gesture overlay preflights a native file, opens the sub-ring, and acce
     const { mockOffer } = window as unknown as { mockOffer: (event: string, payload: unknown) => void }
     mockOffer('versa-drag-over', [drop.x, drop.y])
     mockOffer('versa-drag-drop', drop)
-  }, { ...offer, id: 13, x: target.x + target.width / 2, y: target.y + target.height / 2 })
+  }, { ...offer, x: target.x + target.width / 2, y: target.y + target.height / 2 })
   await expect(page.locator('.wheel-message')).toContainText('ficha (Versa).txt')
+})
+
+test('a native drop on the desktop background stages the file and saves against its source', async ({ page }) => {
+  const source = await mockWindows(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 460, height: 640 })
+  await page.goto('/desktop.html?desktop=main')
+  await expect(page.getByRole('heading', { name: 'Últimas conversões' })).toBeVisible()
+  const offer = { id: 17, entries: [{ name: 'ficha.pdf', size: source.length }], problem: null, x: 12, y: 64 }
+  await page.evaluate(offer => {
+    const { mockOffer } = window as unknown as { mockOffer: (name: string, payload: unknown) => void }
+    mockOffer('versa-drag-enter', offer)
+    mockOffer('versa-drag-drop', offer)
+  }, offer)
+  await expect(page.locator('.wheel-status')).toHaveText('Ficheiros verificados')
+  await expect(page.locator('.wheel-centre')).toContainText('ficha.pdf')
+  await page.locator('.wheel-buttons [data-slice=pdf]').click()
+  await expect(page.locator('.lab-heading [data-back]')).toBeInViewport()
+  await page.locator('.wheel-buttons [data-slice=pdf-text]').click()
+  await expect(page.locator('.wheel-message')).toContainText('ficha (Versa).txt')
+  const calls = await page.evaluate(() => (window as unknown as { mockCalls: { command: string; header?: string }[] }).mockCalls)
+  expect(calls.filter(call => call.command === 'read_file')).toHaveLength(1)
+  expect(JSON.parse(calls.find(call => call.command === 'save_result')!.header!)).toMatchObject({ id: 17, extension: 'txt' })
+})
+
+test('the Versa title bar provides drag and window controls and blocks drop navigation', async ({ page }) => {
+  await mockWindows(page)
+  await page.setViewportSize({ width: 460, height: 640 })
+  await page.goto('/desktop.html?desktop=main')
+  const titlebar = page.locator('.versa-titlebar')
+  await expect(titlebar.locator('.versa-titlebar-drag')).toHaveAttribute('data-tauri-drag-region', '')
+  await expect(titlebar.getByRole('img', { name: 'Versa' })).toBeVisible()
+  await titlebar.getByRole('button', { name: 'Maximizar', exact: true }).click()
+  await expect(titlebar.getByRole('button', { name: 'Restaurar janela' })).toBeVisible()
+  await titlebar.getByRole('button', { name: 'Restaurar janela' }).click()
+  await expect(titlebar.getByRole('button', { name: 'Maximizar', exact: true })).toBeVisible()
+  await titlebar.getByRole('button', { name: 'Minimizar' }).click()
+  await titlebar.getByRole('button', { name: 'Fechar janela' }).click()
+  await titlebar.locator('[data-language-switch]').click()
+  await expect(titlebar.getByRole('button', { name: 'Close window' })).toBeVisible()
+  const result = await page.evaluate(() => {
+    const transfer = new DataTransfer()
+    transfer.setData('text/uri-list', 'https://example.com/')
+    const stopped = ['dragover', 'drop'].map(type => !document.body.dispatchEvent(new DragEvent(type, {
+      dataTransfer: transfer, bubbles: true, cancelable: true,
+    })))
+    const { mockCalls } = window as unknown as { mockCalls: { command: string }[] }
+    return { stopped, commands: mockCalls.map(call => call.command) }
+  })
+  expect(result.stopped).toEqual([true, true])
+  expect(result.commands).toEqual(expect.arrayContaining(['plugin:window|minimize', 'plugin:window|toggle_maximize', 'plugin:window|close']))
 })
