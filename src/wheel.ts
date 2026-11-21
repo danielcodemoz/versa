@@ -1,4 +1,5 @@
-import { available, categories, categoryFor, kindFromName, recipes, suggest, t, type Category, type Kind, type Language, type Recipe } from '../packages/engine/catalog'
+import { available, categories, categoryFor, kindFromFile, kindFromMime, recipes, suggest, t, type Category, type Kind, type Language, type Recipe } from '../packages/engine/catalog'
+import { categoryForDrop } from './drop-category'
 import { copy } from './copy'
 import { icon } from './icons'
 import { inspectFiles, type Preflight, type Problem } from '../packages/engine/preflight'
@@ -160,7 +161,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
         event.preventDefault()
         const form = event.currentTarget as HTMLFormElement
         const input = form.querySelector('input')!
-        void stage(files, undefined, input.value).then(() => {
+        void stage(files, { password: input.value }).then(() => {
           if (problem) message.querySelector('input')?.focus({ preventScroll: true })
         })
       })
@@ -223,7 +224,12 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     result = undefined
   }
 
-  async function stage(next: File[], recipe?: Recipe, password?: string, preflight?: Preflight) {
+  async function stage(next: File[], { recipe, password, preflight, inferred }: {
+    recipe?: Recipe
+    password?: string
+    preflight?: Preflight
+    inferred?: Category
+  } = {}) {
     if (!next.length || percent !== undefined) return
     const generation = ++token
     clearResult()
@@ -231,14 +237,15 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     kinds = []
     problem = undefined
     checking = true
-    render()
+    if (inferred) openCategory(inferred, false)
+    else render()
     options = { ...options, password }
     const verdict = preflight ?? await inspectFiles(next, password)
     if (generation !== token) return
     checking = false
     kinds = verdict.kinds
     problem = verdict.problem
-    if (category && !problem && !recipes.some(recipe => recipe.category === category && canRun(recipe) && available(recipe, kinds))) category = undefined
+    if (category && category !== inferred && !problem && !recipes.some(recipe => recipe.category === category && canRun(recipe) && available(recipe, kinds))) category = undefined
     render()
     if (recipe && !problem && canRun(recipe) && available(recipe, kinds)) await run(recipe)
     else if (!suggestion.hidden) suggestion.querySelector<HTMLElement>('[data-suggest]')?.focus({ preventScroll: true })
@@ -331,6 +338,11 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   }
   function hit(target: EventTarget | null) {
     return target instanceof Element ? (target.closest<HTMLElement | SVGElement>('[data-hit], [data-slice]')?.dataset.hit ?? target.closest<HTMLElement>('[data-slice]')?.dataset.slice) : undefined
+  }
+  function dropTarget(target: EventTarget | null) {
+    const initialWheel = !category && target instanceof Node && wheel.contains(target)
+    const id = initialWheel ? undefined : hit(target)
+    return { initialWheel, slice: slices.find(slice => slice.id === id) }
   }
   function endDrag() {
     if (!dragging) return
@@ -428,7 +440,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     dragging = true
     const hinted = [...(event.dataTransfer?.items ?? [])].map(item => {
       const file = item.getAsFile()
-      return file ? kindFromName(file.name) : ({ 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'avif', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx' } as Record<string, Kind>)[item.type]
+      return file ? kindFromFile(file) : kindFromMime(item.type)
     })
     dragKinds = hinted.every((kind): kind is Kind => Boolean(kind)) ? hinted : []
     overlay.classList.add('visible')
@@ -450,12 +462,15 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     if (!fileDrag(event)) return
     event.preventDefault()
     const next = [...event.dataTransfer?.files ?? []]
-    const target = slices.find(slice => slice.id === hit(event.target) && !slice.disabled)
+    const { initialWheel, slice: target } = dropTarget(event.target)
     endDrag()
     if (!next.length || percent !== undefined) return
-    if (target) openCategory(target.category, false)
+    if (target && !target.disabled) openCategory(target.category, false)
     nativeSource = undefined
-    void stage(next, target?.recipe)
+    void stage(next, {
+      recipe: target?.disabled ? undefined : target?.recipe,
+      inferred: initialWheel ? categoryForDrop(next) : undefined,
+    })
   })
   function nativeTarget(x: number, y: number) {
     return slices.find(slice => slice.id === hit(document.elementFromPoint(x, y)))
@@ -481,7 +496,8 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   render()
   return {
     render, openCategory, reset,
-    nativeOver, nativeTarget,
+    nativeOver,
+    nativeDropTarget: (x: number, y: number) => dropTarget(document.elementFromPoint(x, y)),
     nativeLeave: endDrag,
     nativeEnter(hints: Kind[], x: number, y: number, issue?: Problem) {
       if (percent !== undefined) return
@@ -508,12 +524,17 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
       checking = true
       render()
     },
-    async stageNative(next: File[], source: NativeSource, verdict: Preflight, target?: Slice) {
+    async stageNative(next: File[], source: NativeSource, verdict: Preflight, drop?: ReturnType<typeof dropTarget>) {
       if (percent !== undefined) return
       nativeSource = source
+      const target = drop?.slice
       if (target && !target.disabled) openCategory(target.category, false)
       const recipe = target?.recipe ?? (target ? recipes.find(recipe => recipe.category === target.category && canRun(recipe) && available(recipe, verdict.kinds)) : undefined)
-      await stage(next, target?.disabled ? undefined : recipe, undefined, verdict)
+      await stage(next, {
+        recipe: target?.disabled ? undefined : recipe,
+        preflight: verdict,
+        inferred: drop?.initialWheel ? categoryForDrop(next) : undefined,
+      })
     },
     lock(reason: Problem) {
       endDrag()

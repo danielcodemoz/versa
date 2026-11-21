@@ -145,3 +145,21 @@ test('the Versa title bar provides drag and window controls and blocks drop navi
   expect(result.stopped).toEqual([true, true])
   expect(result.commands).toEqual(expect.arrayContaining(['plugin:window|minimize', 'plugin:window|toggle_maximize', 'plugin:window|close']))
 })
+
+test('a native drop on the initial wheel opens the file category with the source loaded', async ({ page }) => {
+  const source = await mockWindows(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 460, height: 640 })
+  await page.goto('/desktop.html?desktop=main')
+  await expect(page.getByRole('heading', { name: 'Últimas conversões' })).toBeVisible()
+  const centre = (await page.locator('.wheel-centre').boundingBox())!
+  await page.evaluate(offer => {
+    const { mockOffer } = window as unknown as { mockOffer: (name: string, payload: unknown) => void }
+    mockOffer('versa-drag-drop', offer)
+  }, { id: 22, entries: [{ name: 'ficha.pdf', size: source.length }], problem: null, x: centre.x + centre.width / 2, y: centre.y + centre.height / 2 })
+  await expect(page.locator('.wheel-status')).toHaveText('Ficheiros verificados')
+  await expect(page.locator('.wheel')).toHaveClass(/is-subring/)
+  await expect(page.locator('.wheel-centre')).toContainText('ficha.pdf')
+  await page.locator('.wheel-buttons [data-slice=pdf-text]').click()
+  await expect(page.locator('.wheel-message')).toContainText('ficha (Versa).txt')
+})

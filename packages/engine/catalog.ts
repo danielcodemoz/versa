@@ -54,10 +54,23 @@ export const t = (language: Language, message: Phrase) => message[language === '
 export const categoryFor = (id: Category) => categories.find(category => category.id === id)!
 export const available = (recipe: Recipe, kinds: readonly Kind[]) =>
   !kinds.length || (kinds.length >= (recipe.min ?? 1) && (kinds.length === 1 || recipe.multiple) && kinds.every(kind => recipe.inputs.includes(kind)))
+export const extensionFromName = (name: string) =>
+  name.includes('.') ? name.split('.').at(-1)?.toLowerCase().replace(/^jpeg$/, 'jpg') : undefined
+const supportedKinds = ['pdf', 'docx', 'xlsx', 'pptx', ...images] as const
 export const kindFromName = (name: string): Kind | undefined => {
-  const extension = name.includes('.') ? name.split('.').at(-1)?.toLowerCase().replace(/^jpeg$/, 'jpg') : undefined
-  return ['pdf', 'docx', 'xlsx', 'pptx', ...images].find(kind => kind === extension) as Kind | undefined
+  const extension = extensionFromName(name)
+  return supportedKinds.find(kind => kind === extension)
 }
+
+const mimeKinds = new Map<string, Kind>([
+  ['application/pdf', 'pdf'],
+  ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
+  ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
+  ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 'pptx'],
+  ['image/jpeg', 'jpg'], ['image/png', 'png'], ['image/webp', 'webp'], ['image/avif', 'avif'],
+])
+export const kindFromMime = (type: string) => mimeKinds.get(type)
+export const kindFromFile = (file: File) => kindFromName(file.name) ?? kindFromMime(file.type)
 /** The one conversion worth offering first for a set of dropped files. */
 export const suggest = (kinds: readonly Kind[]): Recipe | undefined => {
   if (!kinds.length) return undefined

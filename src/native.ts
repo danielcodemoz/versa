@@ -103,7 +103,7 @@ export async function mountNative(wheel: Wheel, language: () => Language, overla
 
   async function use(offer: Offer, drop: boolean) {
     const version = ++readVersion
-    const target = drop ? wheel.nativeTarget(...viewport(offer.x, offer.y)) : undefined
+    const target = drop ? wheel.nativeDropTarget(...viewport(offer.x, offer.y)) : undefined
     const hovered = current
     current = undefined
     if (offer.problem || offer.id === null) {
