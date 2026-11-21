@@ -13,10 +13,11 @@
         "label": "main",
         "title": "Versa",
         "url": "desktop.html?desktop=main",
-        "width": 690,
-        "height": 720,
+        "width": 460,
+        "height": 640,
         "minWidth": 390,
         "minHeight": 480,
+        "decorations": false,
         "visible": false,
         "dragDropEnabled": true
       },
@@ -39,7 +40,8 @@
     ],
     "security": {
       "capabilities": [
-        "versa"
+        "versa",
+        "versa-main-window"
       ]
     }
   },

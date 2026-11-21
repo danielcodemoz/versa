@@ -37,6 +37,8 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   const pick = root.querySelector<HTMLButtonElement>('[data-pick]')!
   const settings = root.querySelector<HTMLElement>('.wheel-settings')!
   const control = root.querySelector<HTMLButtonElement>('[data-back]')!
+  const clear = root.querySelector<HTMLButtonElement>('[data-clear]')!
+  const tag = root.querySelector<HTMLElement>('.lab-tag')!
   const suggestion = root.querySelector<HTMLElement>('.wheel-suggest')!
   const overlay = document.querySelector<HTMLElement>('.drag-shade')!
   const reduce = matchMedia('(prefers-reduced-motion: reduce)')
@@ -145,9 +147,11 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
       ` : `<label>${t(getLanguage(), ['Qualidade', 'Quality'])} <input type="range" min="20" max="100" value="${Math.round((options.quality ?? (category === 'pdf' ? .58 : .88)) * 100)}" data-option="quality"></label>
       ${category === 'pdf' ? `<label>${t(getLanguage(), ['Rotação', 'Rotation'])} <select data-option="rotation">${[90,180,270].map(value => `<option value="${value}" ${options.rotation === value ? 'selected' : ''}>${value}°</option>`).join('')}</select></label>` : `<label>${t(getLanguage(), ['Dimensão máxima (px)', 'Maximum dimension (px)'])}<input type="number" min="64" max="8192" placeholder="1200" value="${options.maxDimension ?? ''}" data-option="maxDimension"></label>`}`}
       </details>`
-    control.hidden = !category && !files.length
-    control.innerHTML = `${icon(category ? 'arrow' : 'close', 14)} ${local(category ? 'back' : 'close')}`
-    control.classList.toggle('is-back', Boolean(category))
+    control.hidden = !category
+    control.innerHTML = `${icon('arrow', 14)} ${local('back')}`
+    tag.hidden = Boolean(category)
+    clear.hidden = Boolean(category) || !files.length
+    clear.innerHTML = `${icon('close', 14)} ${local('close')}`
     status.textContent = issue ? local(issue) : checking ? local('verifying') : dragging ? local(dragVerified ? 'ready' : 'drop') : files.length ? local('ready') : ''
     message.hidden = !problem && !result || dragging
     if (problem && !dragging) {
@@ -259,7 +263,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     active = undefined
     render()
     if (!reduce.matches) graphics.animate([{ transform: 'scale(.88) rotate(-30deg)', opacity: .55 }, { transform: 'scale(1) rotate(0)', opacity: 1 }], { duration: 360, easing: 'cubic-bezier(.19,1,.36,1)' })
-    if (focus) buttons.querySelector<HTMLButtonElement>('button:not([aria-disabled])')?.focus()
+    if (focus) buttons.querySelector<HTMLButtonElement>('button:not([aria-disabled])')?.focus({ preventScroll: true })
   }
 
   async function run(recipe: Recipe) {
@@ -389,16 +393,15 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   root.querySelector('[data-dismiss]')?.addEventListener('click', () => void dismiss?.())
   root.querySelector('[data-example]')!.addEventListener('click', () => void stage([samplePdf()]))
   control.addEventListener('click', () => {
-    if (category) {
-      const previous = category
-      category = undefined
-      active = undefined
-      render()
-      buttons.querySelector<HTMLButtonElement>(`[data-slice="${previous}"]`)?.focus()
-    } else {
-      reset()
-      pick.focus()
-    }
+    const previous = category
+    category = undefined
+    active = undefined
+    render()
+    buttons.querySelector<HTMLButtonElement>(`[data-slice="${previous}"]`)?.focus({ preventScroll: true })
+  })
+  clear.addEventListener('click', () => {
+    reset()
+    pick.focus()
   })
   fileInput.addEventListener('change', () => {
     void stage([...fileInput.files ?? []])

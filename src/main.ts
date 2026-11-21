@@ -61,6 +61,7 @@ app.innerHTML = `
           <div class="lab-heading">
             <h2 id="wheel-title" data-copy="wheel">${local('wheel')}</h2>
             <span class="lab-tag"><i></i>${label('demo')}</span>
+            <button class="quiet wheel-back" type="button" data-back hidden></button>
           </div>
           <div class="wheel-stage">
             <span class="wheel-note" data-note>${t(language, ['larga aqui!', 'drop it here!'])}</span>
@@ -77,7 +78,7 @@ app.innerHTML = `
             <button class="button button-small pick" type="button" data-pick>${icon('upload', 17)} ${label('pick')}</button>
             <button class="quiet" type="button" data-example>${label('example')}</button>
           </div>
-          <button class="quiet wheel-back" type="button" data-back hidden></button>
+          <button class="quiet wheel-clear" type="button" data-clear hidden></button>
           <div class="wheel-settings" hidden></div>
           <div class="wheel-status" role="status"></div>
           <div class="wheel-suggest" role="region" aria-label="${local('suggestion')}" hidden></div>
