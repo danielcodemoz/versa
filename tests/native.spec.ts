@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { samplePdf } from '../src/sample'
 
-async function mockWindows(page: Page) {
+async function mockWindows(page: Page, sources?: number[][]) {
   const source = Array.from(new Uint8Array(await samplePdf().arrayBuffer()))
-  await page.addInitScript(source => {
+  await page.addInitScript(({ source, sources }) => {
     let maximized = false
     const label = location.search.includes('gesture') ? 'gesture' : 'main'
     const callbacks = new Map<number, (event: { payload: unknown }) => void>()
@@ -20,7 +20,7 @@ async function mockWindows(page: Page) {
           callbacks.set(id, callback)
           return id
         },
-        async invoke(command: string, args: { event: string; handler: number; target?: { kind: string; label: string } } | Uint8Array) {
+        async invoke(command: string, args: { event: string; handler: number; target?: { kind: string; label: string }; index?: number } | Uint8Array) {
           if (command === 'plugin:event|listen' && !(args instanceof Uint8Array)) {
             if (args.event.startsWith('versa-drag-') && (args.target?.kind !== 'Window' || args.target.label !== label)) {
               throw new Error('Native drag listeners must target their own window')
@@ -38,7 +38,9 @@ async function mockWindows(page: Page) {
           if (command === 'plugin:window|is_maximized') return maximized
           if (command === 'plugin:window|toggle_maximize') maximized = !maximized
           if (command === 'pick') return { id: 12, entries: [{ name: 'ficha.pdf', size: source.length }], x: 0, y: 0, problem: null }
-          if (command === 'read_file') return new Uint8Array(source).buffer
+          if (command === 'read_file' && !(args instanceof Uint8Array)) {
+            return new Uint8Array(sources?.[args.index ?? 0] ?? source).buffer
+          }
           if (command === 'history') return [{ id: 44, name: 'anterior (Versa).pdf' }]
           if (command === 'startup') return false
           if (command === 'output_folder') return null
@@ -46,7 +48,7 @@ async function mockWindows(page: Page) {
       },
     }
     Object.assign(window, mocked)
-  }, source)
+  }, { source, sources })
   return source
 }
 
@@ -162,4 +164,29 @@ test('a native drop on the initial wheel opens the file category with the source
   await expect(page.locator('.wheel-centre')).toContainText('ficha.pdf')
   await page.locator('.wheel-buttons [data-slice=pdf-text]').click()
   await expect(page.locator('.wheel-message')).toContainText('ficha (Versa).txt')
+})
+
+test('JPG and PNG in a native drop open one image category', async ({ page }) => {
+  const images = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 2
+    return Promise.all(['image/jpeg', 'image/png'].map(async type => {
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, type))
+      return [...new Uint8Array(await blob!.arrayBuffer())]
+    }))
+  })
+  await mockWindows(page, images)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 460, height: 640 })
+  await page.goto('/desktop.html?desktop=main')
+  await expect(page.getByRole('heading', { name: 'Últimas conversões' })).toBeVisible()
+  const centre = (await page.locator('.wheel-centre').boundingBox())!
+  const entries = ['a.jpg', 'b.png'].map((name, index) => ({ name, size: images[index].length }))
+  await page.evaluate(offer => {
+    const { mockOffer } = window as unknown as { mockOffer: (name: string, payload: unknown) => void }
+    mockOffer('versa-drag-drop', offer)
+  }, { id: 23, entries, problem: null, x: centre.x + centre.width / 2, y: centre.y + centre.height / 2 })
+  await expect(page.locator('.wheel-status')).toHaveText('Ficheiros verificados')
+  await expect(page.locator('.wheel-centre')).toContainText('2 ficheiros')
+  await expect(page.locator('.wheel-buttons [data-slice=image-pdf]')).toBeEnabled()
 })
