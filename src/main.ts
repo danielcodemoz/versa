@@ -34,6 +34,7 @@ app.innerHTML = `
       <nav aria-label="Versa">
         <a href="#categorias">${label('categories')}</a>
         <a href="#escolas">${label('school')}</a>
+        ${desktop === null ? `<a class="nav-editor" href="/editor.html">${label('editor')}</a>` : ''}
         <a href="#faq">${label('help')}</a>
       </nav>
       <div class="switches">${languageButton()}${themeButton()}</div>
@@ -79,6 +80,7 @@ app.innerHTML = `
           <button class="quiet wheel-back" type="button" data-back hidden></button>
           <div class="wheel-settings" hidden></div>
           <div class="wheel-status" role="status"></div>
+          <div class="wheel-suggest" role="region" aria-label="${local('suggestion')}" hidden></div>
           <div class="wheel-message" hidden></div>
         </section>
       </div>
@@ -112,6 +114,11 @@ app.innerHTML = `
         </div>
       </div>
     </section>
+    ${desktop === null ? `<section class="band shell feature editor-band" id="editor">
+      <div><p class="kicker" data-copy="editor">${local('editor')}</p>${heading('editorTitle')}<p data-copy="editorInfo">${local('editorInfo')}</p>
+      <a class="button" href="/editor.html">${icon('pdf', 20)} ${label('editorLink')}</a></div>
+      <div class="lock-sticker" aria-hidden="true">${icon('pdf', 72)}</div>
+    </section>` : ''}
     <section class="band shell feature privacy" id="privacidade">
       <div><div class="lock-sticker">${icon('lock', 72)}</div><p class="bytes" data-copy="bytes">${local('bytes')}</p></div>
       <div>${heading('privacy')}<p data-copy="privacyInfo">${local('privacyInfo')}</p></div>

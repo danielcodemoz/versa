@@ -14,6 +14,8 @@ O Versa é um conversor gratuito de ficheiros para o navegador e para Windows. A
 | Apresentações | Converter PowerPoint (PPTX) para PDF ou imagens. |
 | Escola | Acrescentar cabeçalho e logótipo, converter fotos de fichas em PDF, preparar duas fichas por folha A4 e juntar testes. |
 
+O **editor de PDF** ([versa.danielpro.dev/editor.html](https://versa.danielpro.dev/editor.html)) acrescenta texto, desenho, imagens e assinatura, e reordena, roda e apaga páginas, tudo no browser. Largar um ficheiro em qualquer ponto da página inicial sugere logo a conversão certa (clique ou Enter).
+
 A interface abre em português de Moçambique e inclui uma versão em inglês.
 
 ## Windows v0.1.0
