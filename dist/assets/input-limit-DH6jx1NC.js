@@ -1,0 +1,1 @@
+function e(){let e=navigator.deviceMemory??4;return Math.min(e*48,192)*1024**2}export{e as t};

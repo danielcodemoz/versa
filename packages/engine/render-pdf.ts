@@ -4,7 +4,7 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 GlobalWorkerOptions.workerSrc = pdfWorker
 
-export async function openPdf(file: File, password?: string) {
+export async function openPdf(file: Blob, password?: string) {
   const support = new URL(import.meta.env.DEV ? '/node_modules/pdfjs-dist/' : import.meta.env.BASE_URL + 'pdfjs/', location.href)
   const configuration = {
     data: await file.arrayBuffer(),

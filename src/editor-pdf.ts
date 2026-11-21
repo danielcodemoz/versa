@@ -4,7 +4,7 @@ import {
   StandardFonts, degrees, rgb, LineCapStyle, type PDFField, type PDFFont,
 } from 'pdf-lib'
 import { baseline, framePointToPdf, lineHeight, normalise } from './editor-geometry'
-import { arrowHead, bounds, fieldKey, offset, type Bitmap, type Family, type FormField, type FormValue, type Meta, type Point, type Sheet, type Source } from './editor-model'
+import { arrowHead, bounds, fieldKey, offset, type Bitmap, type Family, type FormField, type FormValue, type Meta, type Point, type Sheet } from './editor-model'
 
 export async function describeForms(bytes: Uint8Array): Promise<FormField[]> {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false })
@@ -42,7 +42,7 @@ const encodable = (font: PDFFont, line: string) => [...line].map(character => {
 }).join('')
 
 export async function writeEditedPdf(
-  sheets: Sheet[], metas: Meta[], sources: Source[], bitmaps: Bitmap[], values: Record<string, FormValue>,
+  sheets: Sheet[], metas: Meta[], sources: Blob[], bitmaps: Bitmap[], values: Record<string, FormValue>,
 ) {
   const output = await PDFDocument.create()
   const inputs = new Map<number, {
@@ -56,7 +56,7 @@ export async function writeEditedPdf(
   async function inputFor(id: number) {
     const cached = inputs.get(id)
     if (cached) return cached
-    const doc = await PDFDocument.load(sources[id].bytes, { updateMetadata: false })
+    const doc = await PDFDocument.load(await sources[id].arrayBuffer(), { updateMetadata: false })
     const form = doc.getForm()
     const widgets = new Map<PDFDict, PDFField>()
     let changed = false
@@ -183,10 +183,13 @@ export async function writeEditedPdf(
         case 'pic': {
           if (!images.has(note.image)) {
             const bitmap = bitmaps[note.image]
-            images.set(note.image, bitmap.type === 'jpg' ? await output.embedJpg(bitmap.bytes) : await output.embedPng(bitmap.bytes))
+            const bytes = await bitmap.data.arrayBuffer()
+            images.set(note.image, bitmap.type === 'jpg' ? await output.embedJpg(bytes) : await output.embedPng(bytes))
           }
-          const [x, y] = map(note.x, note.y + note.h)
-          page.drawImage(images.get(note.image)!, { x, y, width: note.w / unit, height: note.h / unit, rotate: degrees(base) })
+          const angle = note.angle * Math.PI / 180
+          const centre: Point = [note.x + note.w / 2, note.y + note.h / 2]
+          const [x, y] = map(...offset(centre, angle, -note.w / 2, note.h / 2))
+          page.drawImage(images.get(note.image)!, { x, y, width: note.w / unit, height: note.h / unit, rotate: degrees(base - note.angle), opacity: note.opacity })
           break
         }
         case 'shape': {
