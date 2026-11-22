@@ -273,8 +273,15 @@ async fn save_editor_pdf(
     }
     let (header, data) = split_payload(raw(&request)?)?;
     let name: String = serde_json::from_slice(header).map_err(|error| error.to_string())?;
-    if !data.starts_with(b"%PDF-") || data.len() as u64 > files::MAX_BYTES * 3 {
-        return Err("Invalid PDF output.".into());
+    let (label, extension) = if data.starts_with(b"%PDF-") {
+        ("PDF", "pdf")
+    } else if data.starts_with(b"PK\x03\x04") && name.ends_with(".zip") {
+        ("ZIP", "zip")
+    } else {
+        return Err("Invalid editor output.".into());
+    };
+    if data.len() as u64 > files::MAX_BYTES * 3 {
+        return Err("Editor output exceeds the size limit.".into());
     }
     let suggestion = std::path::Path::new(&name)
         .file_name()
@@ -288,7 +295,7 @@ async fn save_editor_pdf(
             .file()
             .set_parent(&window)
             .set_file_name(suggestion)
-            .add_filter("PDF", &["pdf"])
+            .add_filter(label, &[extension])
             .blocking_save_file()
         else {
             return Ok(false);
@@ -296,9 +303,9 @@ async fn save_editor_pdf(
         let mut path = path.into_path().map_err(|error| error.to_string())?;
         if !path
             .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
+            .is_some_and(|value| value.eq_ignore_ascii_case(extension))
         {
-            path.set_extension("pdf");
+            path.set_extension(extension);
         }
         let folder = path.parent().ok_or("Output folder unavailable.")?;
         let mut temporary =

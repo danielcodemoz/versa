@@ -15,6 +15,7 @@ export function requestSignature(parent: HTMLElement, language: Language) {
   const canvas = dialog.querySelector('canvas')!
   const field = dialog.querySelector('input')!
   const context = canvas.getContext('2d')!
+  const use = dialog.querySelector<HTMLButtonElement>('[data-sign-use]')!
   const clearCanvas = () => context.clearRect(0, 0, canvas.width, canvas.height)
   let result: HTMLCanvasElement | undefined
   let active: number | undefined
@@ -25,6 +26,7 @@ export function requestSignature(parent: HTMLElement, language: Language) {
   canvas.onpointerdown = event => {
     if (!event.isPrimary || event.button !== 0) return
     if (field.value) { field.value = ''; clearCanvas() }
+    use.disabled = false
     active = event.pointerId
     canvas.setPointerCapture(active)
     context.strokeStyle = '#14213d'
@@ -32,7 +34,12 @@ export function requestSignature(parent: HTMLElement, language: Language) {
     context.lineCap = 'round'
     context.lineJoin = 'round'
     context.beginPath()
-    context.moveTo(...at(event))
+    const [x, y] = at(event)
+    context.fillStyle = context.strokeStyle
+    context.arc(x, y, context.lineWidth / 2, 0, 2 * Math.PI)
+    context.fill()
+    context.beginPath()
+    context.moveTo(x, y)
   }
   canvas.onpointermove = event => {
     if (event.pointerId !== active) return
@@ -46,17 +53,20 @@ export function requestSignature(parent: HTMLElement, language: Language) {
   field.oninput = async () => {
     clearCanvas()
     const text = field.value
+    use.disabled = false
     if (!text.trim()) return
+    use.disabled = true
     await document.fonts.load('80px "Caveat Brush"').catch(() => [])
     if (field.value !== text) return
     context.fillStyle = '#14213d'
     context.font = '80px "Caveat Brush", cursive'
     context.textBaseline = 'middle'
     context.fillText(text, 24, canvas.height / 2, canvas.width - 48)
+    use.disabled = false
   }
-  dialog.querySelector<HTMLButtonElement>('[data-sign-clear]')!.onclick = () => { field.value = ''; clearCanvas() }
+  dialog.querySelector<HTMLButtonElement>('[data-sign-clear]')!.onclick = () => { field.value = ''; clearCanvas(); use.disabled = false }
   dialog.querySelector<HTMLButtonElement>('[data-sign-cancel]')!.onclick = () => dialog.close()
-  dialog.querySelector<HTMLButtonElement>('[data-sign-use]')!.onclick = () => {
+  use.onclick = () => {
     result = trimInk(canvas, context)
     if (result) dialog.close()
   }

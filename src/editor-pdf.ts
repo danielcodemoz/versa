@@ -17,7 +17,7 @@ export async function describeForms(bytes: Uint8Array): Promise<FormField[]> {
     if (field instanceof PDFCheckBox) return [{ name, kind: 'check', value: field.isChecked() }]
     if (field instanceof PDFRadioGroup) return [{ name, kind: 'choice', options: field.getOptions(), value: field.getSelected() ?? '' }]
     if (field instanceof PDFDropdown || field instanceof PDFOptionList) {
-      return [{ name, kind: 'choice', options: field.getOptions(), value: field.getSelected(), multiple: field.isMultiselect() }]
+      return [{ name, kind: 'choice', options: field.getOptions(), value: field.getSelected(), multiple: field.isMultiselect(), editable: field instanceof PDFDropdown && field.isEditable() }]
     }
     return []
   })
@@ -41,8 +41,49 @@ const encodable = (font: PDFFont, line: string) => [...line].map(character => {
   try { font.encodeText(character); return character } catch { return '?' }
 }).join('')
 
-export async function writeEditedPdf(
-  sheets: Sheet[], metas: Meta[], sources: Blob[], bitmaps: Bitmap[], values: Record<string, FormValue>,
+export function editedPdfWriter(metas: Meta[], sources: Blob[], bitmaps: Bitmap[], values: Record<string, FormValue>) {
+  const loaded = new Map<number, { doc: PDFDocument; widgets: Map<PDFDict, PDFField> }>()
+  let unicodeFont: Promise<ArrayBuffer> | undefined
+
+  async function loadSource(id: number) {
+    const cached = loaded.get(id)
+    if (cached) return cached
+    const doc = await PDFDocument.load(await sources[id].arrayBuffer(), { updateMetadata: false })
+    const form = doc.getForm()
+    const widgets = new Map<PDFDict, PDFField>()
+    const edited: FormValue[] = []
+    for (const field of form.getFields()) {
+      for (const widget of field.acroField.getWidgets()) widgets.set(widget.dict, field)
+      const value = values[fieldKey(id, field.getName())]
+      if (value !== undefined) { fill(field, value); edited.push(value) }
+    }
+    if (edited.length) {
+      const standardFont = await doc.embedFont(StandardFonts.Helvetica)
+      const needsUnicode = edited.some(value => typeof value !== 'boolean' && [value].flat().some(text =>
+        text.split(/\r?\n/).some(line => encodable(standardFont, line) !== line)))
+      if (needsUnicode) {
+        const { default: fontkit } = await import('@pdf-lib/fontkit')
+        doc.registerFontkit(fontkit)
+        const support = import.meta.env.DEV ? '/node_modules/pdfjs-dist/' : import.meta.env.BASE_URL + 'pdfjs/'
+        unicodeFont ??= fetch(support + 'standard_fonts/LiberationSans-Regular.ttf').then(response => {
+          if (!response.ok) throw new Error('PDF form font unavailable')
+          return response.arrayBuffer()
+        })
+        form.updateFieldAppearances(await doc.embedFont(await unicodeFont, { subset: true }))
+      } else form.updateFieldAppearances(standardFont)
+    }
+    await doc.flush()
+    const input = { doc, widgets }
+    loaded.set(id, input)
+    return input
+  }
+
+  return (sheets: Sheet[]) => writeEditedPdf(sheets, metas, bitmaps, loadSource)
+}
+
+async function writeEditedPdf(
+  sheets: Sheet[], metas: Meta[], bitmaps: Bitmap[],
+  loadSource: (id: number) => Promise<{ doc: PDFDocument; widgets: Map<PDFDict, PDFField> }>,
 ) {
   const output = await PDFDocument.create()
   const inputs = new Map<number, {
@@ -51,23 +92,14 @@ export async function writeEditedPdf(
   const fonts = new Map<Family, PDFFont>()
   const images = new Map<number, Awaited<ReturnType<typeof output.embedPng>>>()
   const branches = new Map<string, { ref: PDFRef; kids: PDFArray }>()
+  const namespaces = new Map<number, string>()
+  const topNames = new Set<string>()
   const fields = new Map<PDFField, { ref: PDFRef; kids: PDFArray }>()
 
   async function inputFor(id: number) {
     const cached = inputs.get(id)
     if (cached) return cached
-    const doc = await PDFDocument.load(await sources[id].arrayBuffer(), { updateMetadata: false })
-    const form = doc.getForm()
-    const widgets = new Map<PDFDict, PDFField>()
-    let changed = false
-    for (const field of form.getFields()) {
-      for (const widget of field.acroField.getWidgets()) widgets.set(widget.dict, field)
-      const value = values[fieldKey(id, field.getName())]
-      if (value !== undefined) { fill(field, value); changed = true }
-    }
-    if (changed) form.updateFieldAppearances()
-    await doc.flush()
-    const input = { doc, copiers: [], counts: new Map<number, number>(), widgets }
+    const input = { ...await loadSource(id), copiers: [], counts: new Map<number, number>() }
     inputs.set(id, input)
     return inputs.get(id)!
   }
@@ -87,7 +119,16 @@ export async function writeEditedPdf(
     let root = fields.get(field)
     if (!root) {
       const parts = field.getName().split('.')
-      if (source) parts.unshift(`PDF ${source + 1}`)
+      if (source) {
+        if (!namespaces.has(source)) {
+          const base = `PDF ${source + 1}`
+          let unique = base
+          for (let suffix = 2; topNames.has(unique); suffix++) unique = `${base} (${suffix})`
+          topNames.add(unique)
+          namespaces.set(source, unique)
+        }
+        parts.unshift(namespaces.get(source)!)
+      }
       let parent: { ref: PDFRef; kids: PDFArray } | undefined
       for (let index = 0; index < parts.length - 1; index++) {
         const key = JSON.stringify(parts.slice(0, index + 1))
@@ -137,6 +178,11 @@ export async function writeEditedPdf(
   async function fontFor(family: Family) {
     if (!fonts.has(family)) fonts.set(family, await output.embedFont(standard[family]))
     return fonts.get(family)!
+  }
+
+  if (sheets.some(sheet => metas[sheet.src].source === 0)) {
+    const primary = await inputFor(0)
+    for (const field of primary.doc.getForm().getFields()) topNames.add(field.getName().split('.')[0])
   }
 
   for (const sheet of sheets) {
