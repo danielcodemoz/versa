@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   worker: { format: 'es' },
+  // The worker is discovered on first OCR use, after Vite's initial dependency scan.
+  optimizeDeps: { include: ['tesseract.js'] },
   build: {
     rollupOptions: {
       input: ["index.html", "desktop.html", "windows.html", "editor.html", "desktop-editor.html"],
@@ -28,6 +30,11 @@ export default defineConfig({
       copyFileSync('node_modules/@jsquash/avif/LICENSE', 'dist/avif/LICENSE')
       mkdirSync('dist/pdfjs', { recursive: true })
       copyFileSync('node_modules/pdfjs-dist/LICENSE', 'dist/pdfjs/LICENSE')
+      mkdirSync('dist/licenses/tesseract', { recursive: true })
+      copyFileSync('node_modules/tesseract.js/LICENSE.md', 'dist/licenses/tesseract/LICENSE.md')
+      for (const name of ['tesseract.min.js.LICENSE.txt', 'worker.min.js.LICENSE.txt']) {
+        copyFileSync(`node_modules/tesseract.js/dist/${name}`, `dist/licenses/tesseract/${name}`)
+      }
       mkdirSync('dist/brand', { recursive: true })
       for (const name of ['favicon.svg', 'favicon.ico', 'og-image.png', 'logo-light.svg', 'logo-dark.svg']) {
         copyFileSync(`brand/${name}`, `dist/brand/${name}`)

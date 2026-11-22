@@ -8,11 +8,13 @@ O Versa é um conversor gratuito de ficheiros para o navegador e para Windows. A
 
 | Categoria | Operações |
 | --- | --- |
-| PDF | Converter para Word, JPG ou texto. Juntar, dividir, comprimir e rodar PDFs. |
+| PDF | Converter para Word, JPG ou texto. Juntar, dividir, comprimir e rodar PDFs. Reconhecer texto em digitalizações e aplicar marcas de água. |
 | Word e Excel | Converter DOCX e XLSX para PDF. Extrair texto e contar palavras em DOCX. |
 | Imagens | Converter para PDF, JPG, PNG, WebP ou AVIF. Comprimir e redimensionar. |
 | Apresentações | Converter PowerPoint (PPTX) para PDF ou imagens. |
 | Escola | Acrescentar cabeçalho e logótipo, converter fotos de fichas em PDF, preparar duas fichas por folha A4 e juntar testes. |
+
+Na roda **PDF**, a acção **OCR** acrescenta texto pesquisável e seleccionável às páginas digitalizadas, em português e inglês. Na primeira utilização, o browser descarrega o motor e os modelos do jsDelivr. O documento é processado no dispositivo. Para personalizar a **Marca de água**, preenche **Texto da marca de água** em **Opções de saída**.
 
 O **editor de PDF** ([versa.danielpro.dev/editor.html](https://versa.danielpro.dev/editor.html)) acrescenta texto, desenho, imagens e assinatura, e reordena, roda e apaga páginas, tudo no browser. Largar um ficheiro em qualquer ponto da página inicial sugere logo a conversão certa (clique ou Enter).
 

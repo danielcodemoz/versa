@@ -16,6 +16,8 @@
     "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.65.1",
     "@tauri-apps/cli": "^2.12.6",
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/por": "1.0.0",
     "@types/node": "^26.6.6",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"
@@ -34,6 +36,7 @@
     "fflate": "^0.8.3",
     "html2canvas": "^1.4.1",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^6.5.438"
+    "pdfjs-dist": "^6.5.438",
+    "tesseract.js": "7.0.0"
   }
 }
