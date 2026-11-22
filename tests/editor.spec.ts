@@ -176,6 +176,31 @@ test('rejects a non-PDF and switches language', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Choose a PDF' })).toBeVisible()
 })
 
+test('uses the right side of the desktop toolbar for pages and image controls', async ({ page }) => {
+  await openEditor(page, await document3())
+  const toolbar = page.getByRole('toolbar', { name: 'Ferramentas' })
+  const pages = toolbar.getByRole('group', { name: 'Páginas' })
+  const annotate = toolbar.getByRole('group', { name: 'Anotar' })
+  const imageTools = toolbar.getByRole('group', { name: 'Editar imagem' })
+  await expect(imageTools).toBeHidden()
+  await page.locator('input[data-pic]').setInputFiles({ name: 'imagem.png', mimeType: 'image/png', buffer: png })
+  await expect(imageTools).toBeVisible()
+  for (const width of [1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    const pageBox = (await pages.boundingBox())!
+    const annotateBox = (await annotate.boundingBox())!
+    const imageBox = (await imageTools.boundingBox())!
+    expect(pageBox.x).toBeGreaterThanOrEqual(annotateBox.x + annotateBox.width)
+    expect(pageBox.y).toBeLessThan(annotateBox.y + annotateBox.height)
+    expect(imageBox.x).toBe(pageBox.x)
+  }
+  await expect(toolbar.getByText('Página 1 de 3')).toBeVisible()
+  await page.locator('[data-thumb]').nth(1).click()
+  await expect(toolbar.getByText('Página 2 de 3')).toBeVisible()
+  await toolbar.getByRole('button', { name: 'Aumentar' }).click()
+  await expect(toolbar.getByText('Zoom 125%')).toBeVisible()
+})
+
 for (const theme of ['light', 'dark'] as const) {
   test(`editor at 390px in ${theme} mode has no horizontal scroll and passes axe`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
@@ -188,6 +213,12 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.locator('[data-thumbs] img')).toHaveCount(3)
     expect(await overflow()).toBeLessThanOrEqual(0)
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([])
+    await page.locator('input[data-pic]').setInputFiles({ name: 'imagem.png', mimeType: 'image/png', buffer: png })
+    await expect(page.getByLabel('Opacidade')).toBeVisible()
+    expect(await overflow()).toBeLessThanOrEqual(0)
+    await page.getByRole('button', { name: 'Texto', exact: true }).click()
+    await expect(page.getByLabel('Tamanho')).toBeVisible()
+    expect(await overflow()).toBeLessThanOrEqual(0)
   })
 }
 
