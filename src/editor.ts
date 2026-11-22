@@ -29,6 +29,7 @@ const P = {
   sample: ['Experimentar com exemplo', 'Try with a sample'],
   privacy: ['0 bytes enviados', '0 bytes uploaded'],
   tools: ['Ferramentas', 'Tools'], edit: ['Editar', 'Edit'], insert: ['Inserir', 'Insert'], annotate: ['Anotar', 'Annotate'],
+  zoom: ['Zoom', 'Zoom'],
   name: ['Nome do documento', 'Document name'], unnamed: ['Documento', 'Document'],
   grid: ['Grelha de páginas', 'Page grid'], first: ['Mover para o início', 'Move to start'], last: ['Mover para o fim', 'Move to end'],
   all: ['Seleccionar todas', 'Select all'], none: ['Limpar selecção de páginas', 'Clear page selection'],
@@ -129,27 +130,32 @@ app.innerHTML = `
           <label>${span('name')} <input type="text" maxlength="180" autocomplete="off" spellcheck="false" data-document-name></label>
           ${button('openAnother', 'file', 'data-pick')}
           <button class="button ed-save" type="button" data-act="save">${icon('save', 19)} ${span('save')}</button>
+          <p class="ed-view-status"><span>${span('page')} <b data-current>1</b> ${span('of')} <b data-total>1</b></span><span>${span('zoom')} <b data-zoom>100%</b></span></p>
         </div>
         <div class="ed-tool-groups">
-          ${group('edit', toolButton('select') + toolButton('text') + action('undo', 'undo') + action('redo', 'redo') + action('delNote', 'close') + action('zoomout', 'zoomout') + action('zoomin', 'zoomin'))}
-          ${group('insert', button('image', 'image', 'data-image') + button('sign', 'sign', 'data-sign'))}
-          ${group('annotate', toolButton('pen') + toolButton('hl', 'highlight') + toolButton('cover') + toolButton('comment') + menu('shapes', 'data-shape', shapeKinds) + menu('stamps', 'data-stamp', ['approved', 'draft', 'date']))}
-          ${group('pages', button('grid', 'grid', 'data-act="grid" aria-pressed="false"') + action('all', 'check') + action('none', 'close') +
-            ([['pageBefore', 'pageBefore'], ['pageAfter', 'pageAfter'], ['duplicate', 'duplicate'], ['del', 'trash'], ['rotl', 'rotl'], ['rotr', 'rotr'],
-              ['first', 'first'], ['earlier', 'left'], ['later', 'right'], ['last', 'last'], ['importPages', 'upload'], ['extract', 'down'], ['merge', 'duplicate'], ['split', 'down']] as const)
-              .map(([key, glyph]) => action(key, glyph)).join('') + '<span data-selection aria-live="polite"></span>')}
-        </div>
-        <div class="ed-props" hidden>
-          <span class="ed-swatches" role="group" data-ka="colour" aria-label="${tx('colour')}">${swatches.map(color => `<button type="button" class="swatch" data-color="${color}" style="--c:${color}" aria-label="${color}" aria-pressed="false"></button>`).join('')}</span>
-          <label>${span('size')} <input type="range" data-size min="8" max="72" value="18"></label>
-          <label data-font-label>${span('font')} <select data-font>${(['sans', 'serif', 'mono'] as const).map(family => `<option value="${family}" data-k="${family}">${tx(family)}</option>`).join('')}</select></label>
-        </div>
-        <div class="ed-image-tools" role="group" data-ka="pictureTools" aria-label="${tx('pictureTools')}" hidden>
-          ${button('pictureLeft', 'rotl', 'data-picture="left"')}
-          ${button('pictureRight', 'rotr', 'data-picture="right"')}
-          ${button('crop', 'crop', 'data-picture="crop"')}
-          ${button('replacePicture', 'image', 'data-picture="replace"')}
-          <label>${span('opacity')} <input type="range" data-opacity min="0" max="100" value="100"></label><span data-opacity-value>100%</span>
+          <div class="ed-primary-tools">
+            ${group('edit', toolButton('select') + toolButton('text') + action('undo', 'undo') + action('redo', 'redo') + action('delNote', 'close') + action('zoomout', 'zoomout') + action('zoomin', 'zoomin'))}
+            ${group('insert', button('image', 'image', 'data-image') + button('sign', 'sign', 'data-sign'))}
+            ${group('annotate', toolButton('pen') + toolButton('hl', 'highlight') + toolButton('cover') + toolButton('comment') + menu('shapes', 'data-shape', shapeKinds) + menu('stamps', 'data-stamp', ['approved', 'draft', 'date']))}
+          </div>
+          <div class="ed-page-tools">
+            ${group('pages', button('grid', 'grid', 'data-act="grid" aria-pressed="false"') + action('all', 'check') + action('none', 'close') +
+              ([['pageBefore', 'pageBefore'], ['pageAfter', 'pageAfter'], ['duplicate', 'duplicate'], ['del', 'trash'], ['rotl', 'rotl'], ['rotr', 'rotr'],
+                ['first', 'first'], ['earlier', 'left'], ['later', 'right'], ['last', 'last'], ['importPages', 'upload'], ['extract', 'down'], ['merge', 'duplicate'], ['split', 'down']] as const)
+                .map(([key, glyph]) => action(key, glyph)).join('') + '<span data-selection aria-live="polite"></span>')}
+            <div class="ed-props" hidden>
+              <span class="ed-swatches" role="group" data-ka="colour" aria-label="${tx('colour')}">${swatches.map(color => `<button type="button" class="swatch" data-color="${color}" style="--c:${color}" aria-label="${color}" aria-pressed="false"></button>`).join('')}</span>
+              <label>${span('size')} <input type="range" data-size min="8" max="72" value="18"></label>
+              <label data-font-label>${span('font')} <select data-font>${(['sans', 'serif', 'mono'] as const).map(family => `<option value="${family}" data-k="${family}">${tx(family)}</option>`).join('')}</select></label>
+            </div>
+            <div class="ed-image-tools" role="group" data-ka="pictureTools" aria-label="${tx('pictureTools')}" hidden>
+              ${button('pictureLeft', 'rotl', 'data-picture="left"')}
+              ${button('pictureRight', 'rotr', 'data-picture="right"')}
+              ${button('crop', 'crop', 'data-picture="crop"')}
+              ${button('replacePicture', 'image', 'data-picture="replace"')}
+              <label>${span('opacity')} <input type="range" data-opacity min="0" max="100" value="100"></label><span data-opacity-value>100%</span>
+            </div>
+          </div>
         </div>
       </div>
       <p class="ed-visual" data-k="visual">${tx('visual')}</p>
@@ -160,7 +166,7 @@ app.innerHTML = `
         </div>
       </div>
       <details class="ed-form" data-form hidden><summary>${span('formFields')}</summary><div data-fields></div></details>
-      <p class="ed-page-label"><span data-k="page">${tx('page')}</span> <b data-current>1</b> <span data-k="of">${tx('of')}</span> <b data-total>1</b> · <span data-k="hint">${tx('hint')}</span></p>
+      <p class="ed-page-label" data-k="hint">${tx('hint')}</p>
     </section>
     <div class="ed-status" role="status" data-status></div>
     <input type="file" hidden accept=".pdf,application/pdf" data-open>
@@ -378,6 +384,7 @@ function renderAll() {
   else { renderNumber++; drawTask?.cancel() }
   q('[data-current]').textContent = String(current + 1)
   q('[data-total]').textContent = String(sheets.length)
+  q('[data-zoom]').textContent = `${Math.round(zoom * 100)}%`
   renderFields()
   syncControls()
 }
@@ -400,8 +407,6 @@ async function showPage() {
   sheetEl.style.transform = sheetTransform(sheet.turn, frame, scale)
   sheetEl.style.setProperty('--s', String(scale))
   inkLayer.setAttribute('viewBox', `0 0 ${fw} ${fh}`)
-  q('[data-current]').textContent = String(current + 1)
-  q('[data-total]').textContent = String(sheets.length)
   renderNotes()
   drawTask?.cancel()
   canvas.width = canvas.height = 1
