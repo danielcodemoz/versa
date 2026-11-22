@@ -147,6 +147,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
         <span class="logo-label" id="logo-status" role="status">${escape(options.logo?.name ?? t(getLanguage(), ['Nenhum ficheiro seleccionado', 'No file selected']))}</span>
       ` : `<label>${t(getLanguage(), ['Qualidade', 'Quality'])} <input type="range" min="20" max="100" value="${Math.round((options.quality ?? (category === 'pdf' ? .58 : .88)) * 100)}" data-option="quality"></label>
       ${category === 'pdf' ? `<label>${t(getLanguage(), ['Rotação', 'Rotation'])} <select data-option="rotation">${[90,180,270].map(value => `<option value="${value}" ${options.rotation === value ? 'selected' : ''}>${value}°</option>`).join('')}</select></label>` : `<label>${t(getLanguage(), ['Dimensão máxima (px)', 'Maximum dimension (px)'])}<input type="number" min="64" max="8192" placeholder="1200" value="${options.maxDimension ?? ''}" data-option="maxDimension"></label>`}`}
+      ${category === 'pdf' ? `<label>${t(getLanguage(), ['Texto da marca de água', 'Watermark text'])} <input type="text" maxlength="100" placeholder="Versa" value="${escape(options.watermark ?? '')}" data-option="watermark"></label>` : ''}
       </details>`
     control.hidden = !category
     control.innerHTML = `${icon('arrow', 14)} ${local('back')}`
@@ -367,6 +368,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
   settings.addEventListener('input', event => {
     const input = event.target as HTMLInputElement
     if (input.dataset.option === 'header') options.header = input.value
+    if (input.dataset.option === 'watermark') options.watermark = input.value
   })
   settings.addEventListener('change', event => {
     const input = event.target as HTMLInputElement

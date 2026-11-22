@@ -37,6 +37,12 @@ async function rasterPdf(file: File, password: string | undefined, quality: numb
   }
 }
 
+export async function unlockedPdf(file: File, password?: string): Promise<Blob> {
+  if (!password) return file
+  const { editInWorker } = await import('../../src/editor-worker')
+  return editInWorker({ action: 'unlock', source: file, password })
+}
+
 export async function editablePdf(file: File, password?: string) {
   try {
     return await PDFDocument.load(await file.arrayBuffer())

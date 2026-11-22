@@ -43,12 +43,21 @@ export async function checkPdf(file: File, password?: string) {
   }
 }
 
-export async function renderPage(page: PDFPageProxy, maxDimension: number) {
+export function renderViewport(page: PDFPageProxy, maxDimension: number, maxScale = 2) {
   const base = page.getViewport({ scale: 1 })
-  const viewport = page.getViewport({ scale: Math.min(2, maxDimension / Math.max(base.width, base.height)) })
+  return page.getViewport({ scale: Math.min(maxScale, maxDimension / Math.max(base.width, base.height)) })
+}
+
+export async function renderPage(page: PDFPageProxy, maxDimension: number, maxScale = 2) {
+  const viewport = renderViewport(page, maxDimension, maxScale)
   const canvas = document.createElement('canvas')
   canvas.width = Math.ceil(viewport.width)
   canvas.height = Math.ceil(viewport.height)
-  await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise
-  return canvas
+  try {
+    await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise
+    return canvas
+  } catch (error) {
+    canvas.width = canvas.height = 0
+    throw error
+  }
 }

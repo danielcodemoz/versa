@@ -8,6 +8,7 @@ export interface Options {
   quality?: number
   maxDimension?: number
   rotation?: 90 | 180 | 270
+  watermark?: string
   header?: string
   logo?: File
 }
