@@ -1,4 +1,4 @@
-import { available, categories, categoryFor, kindFromFile, kindFromMime, recipes, suggest, t, type Category, type Kind, type Language, type Recipe } from '../packages/engine/catalog'
+import { available, needsPro, categories, categoryFor, kindFromFile, kindFromMime, recipes, suggest, t, type Category, type Kind, type Language, type Recipe } from '../packages/engine/catalog'
 import { categoryForDrop } from './drop-category'
 import { copy } from './copy'
 import { icon } from './icons'
@@ -105,6 +105,7 @@ export function mountWheel(root: HTMLElement, getLanguage: () => Language) {
     const locked = Boolean(issue || checking || percent !== undefined)
     const disabledReason = (candidates: Recipe[]) => issue ? local(issue) : checking ? local('verifying')
       : candidates.some(candidate => canRun(candidate) && available(candidate, detected)) ? undefined
+      : candidates.some(candidate => needsPro(candidate, detected)) ? t(getLanguage(), ['Vários ficheiros de uma vez: Versa Pro.', 'Many files at once: Versa Pro.'])
       : candidates.some(canRun) ? local('wrong') : t(getLanguage(), ['Disponível em breve.', 'Coming soon.'])
     slices = category ? recipes.filter(recipe => recipe.category === category).map(recipe => {
       const reason = disabledReason([recipe])
