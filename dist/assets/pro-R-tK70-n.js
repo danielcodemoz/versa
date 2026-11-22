@@ -1,0 +1,29 @@
+import{n as e,t}from"./logo-light-DoR1qZaV.js";import{d as n,f as r,m as i,p as a}from"./catalog-Z9lsGX0W.js";import{t as o}from"./logo-dark-ME5wp82u.js";var s=[{id:`individual`,name:[`Individual`,`Individual`],price:1200,devices:[`1 computador`,`1 computer`]},{id:`school`,name:[`Escola`,`School`],price:6e3,devices:[`até 10 computadores`,`up to 10 computers`]}],c={mpesa:``,emola:``,contact:``},l=document.querySelector(`#pro-app`),u=e=>{try{return localStorage.getItem(e)}catch{return null}},d=(e,t)=>{try{localStorage.setItem(e,t)}catch{}},f=u(`versa-language`)===`en`?`en`:`pt`,p=u(`versa-theme`)??(matchMedia(`(prefers-color-scheme: dark)`).matches?`dark`:`light`),m,h=``,g=e=>n(f,e),_=e=>String(e).replace(/\B(?=(\d{3})+(?!\d))/g,f===`pt`?`.`:`,`)+` MT`,v={"not-configured":[`As licenças ainda não estão activadas nesta versão.`,`Licences are not enabled in this version yet.`],format:[`Chave inválida. Copia-a inteira, começa por VERSA1.`,`Invalid key. Copy all of it; it starts with VERSA1.`],signature:[`Chave não reconhecida. Confirma que a copiaste sem alterações.`,`Key not recognised. Check that you copied it unchanged.`],expired:[`Esta licença já expirou. Pede a renovação.`,`This licence has expired. Ask for a renewal.`]},y=[[`Lote: converter, comprimir, rodar, pôr marca de água, fazer OCR ou pôr o cabeçalho da escola em vários ficheiros de uma vez. Sai um ZIP.`,`Batch: convert, compress, rotate, watermark, OCR or add the school header to many files at once. You get a ZIP.`],[`Lote também para Word, Excel e PowerPoint para PDF, e para imagens (JPG, PNG, WebP, AVIF).`,`Batch also for Word, Excel and PowerPoint to PDF, and for images (JPG, PNG, WebP, AVIF).`],[`Apoio directo por mensagem.`,`Direct support by message.`]];function b(){if(m?.ok){let t=m.payload.e?g([`válida até ${m.payload.e}`,`valid until ${m.payload.e}`]):g([`sem data de fim`,`no end date`]);return`<p class="pro-ok" role="status">${e(`arrow`,16)} ${g([`Pro activo para`,`Pro active for`])} <strong data-holder></strong> · ${t}</p>`}return`<p class="pro-problem" role="status">${m&&!m.ok?g(v[m.problem]):h}</p>`}var x=(e,t)=>`<li><strong>${e}</strong> ${t?`<span data-pay></span>`:g([`a confirmar`,`to be confirmed`])}</li>`;function S(){document.documentElement.lang=f===`pt`?`pt-MZ`:`en`,document.documentElement.dataset.theme=p,document.title=`Versa Pro`,document.querySelector(`meta[name="theme-color"]`)?.setAttribute(`content`,p===`dark`?`#172825`:`#f4efe3`),l.innerHTML=`
+    <header class="masthead"><div class="shell masthead-inner">
+      <a class="brand-link" href="/" aria-label="Versa"><img class="brand brand-light" src="${t}" alt="Versa"><img class="brand brand-dark" src="${o}" alt="Versa"></a>
+      <div class="switches">
+        <button class="switch language-switch" type="button" data-language aria-label="${g([`Mudar para inglês`,`Switch to Portuguese`])}">${f===`pt`?`EN`:`PT`}</button>
+        <button class="switch theme-switch" type="button" data-theme aria-label="${g([`Mudar tema`,`Change theme`])}" aria-pressed="${p===`dark`}">${e(p===`dark`?`sun`:`moon`,19)}</button>
+      </div>
+    </div></header>
+    <main class="hero download-hero"><div class="shell release-sheet pro-sheet">
+      <a class="text-link release-back" href="/#roda">${e(`arrow`,16)} ${g([`Voltar à roda`,`Back to the wheel`])}</a>
+      <h1>Versa Pro</h1>
+      <p>${g([`O Versa continua grátis, um ficheiro de cada vez, sem limites e sem enviar nada para lado nenhum. O Pro serve para quem trata muitos ficheiros.`,`Versa stays free, one file at a time, with no limits and nothing uploaded. Pro is for people who handle many files.`])}</p>
+      <ul class="pro-features">${y.map(t=>`<li>${e(`arrow`,16)} ${g(t)}</li>`).join(``)}</ul>
+      <div class="pro-plans">${s.map(e=>`<div class="pro-plan"><h2>${g(e.name)}</h2><p class="pro-price">${_(e.price)}<small>${g([`/ano`,`/year`])}</small></p><p>${g(e.devices)}</p></div>`).join(``)}</div>
+      <h2>${g([`Como comprar`,`How to buy`])}</h2>
+      <ol class="pro-steps">
+        <li>${g([`Paga por M-Pesa ou e-Mola.`,`Pay by M-Pesa or e-Mola.`])}</li>
+        <li>${g([`Envia o código da transacção e o teu nome.`,`Send the transaction code and your name.`])}</li>
+        <li>${g([`Recebes a chave Pro depois de confirmarmos o pagamento.`,`You receive your Pro key once we confirm the payment.`])}</li>
+      </ol>
+      <ul class="pro-pay">${x(`M-Pesa`,c.mpesa)}${x(`e-Mola`,c.emola)}${x(g([`Contacto`,`Contact`]),c.contact)}</ul>
+      <h2>${g([`Já tens uma chave?`,`Already have a key?`])}</h2>
+      <form class="pro-form" novalidate>
+        <label>${g([`Chave Pro`,`Pro key`])} <input name="key" autocomplete="off" spellcheck="false" placeholder="VERSA1.…"></label>
+        <button class="button" type="submit">${g([`Activar`,`Activate`])}</button>
+        ${m?.ok?`<button class="button button-secondary" type="button" data-remove>${g([`Remover licença`,`Remove licence`])}</button>`:``}
+      </form>
+      ${b()}
+    </div></main>`,m?.ok&&(l.querySelector(`[data-holder]`).textContent=m.payload.n);let n=[...l.querySelectorAll(`[data-pay]`)];[c.mpesa,c.emola,c.contact].filter(Boolean).forEach((e,t)=>{n[t]&&(n[t].textContent=e)})}l.addEventListener(`click`,e=>{let t=e.target.closest(`button`);if(!t)return;if(`remove`in t.dataset){i(),m=void 0,h=``,S();return}let n=`language`in t.dataset?`language`:`theme`;if(n===`language`)f=f===`pt`?`en`:`pt`,d(`versa-language`,f);else if(`theme`in t.dataset)p=p===`dark`?`light`:`dark`,d(`versa-theme`,p);else return;S(),l.querySelector(`[data-${n}]`)?.focus()}),l.addEventListener(`submit`,async e=>{e.preventDefault();let t=l.querySelector(`input[name=key]`).value;m=await r(t),S()}),a().then(e=>{m=e,S()}),S();

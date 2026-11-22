@@ -1,0 +1,1 @@
+var e={version:`0.1.5`,exeBytes:7621543,msiBytes:8814592},t=`https://github.com/danielcodemoz/versa/releases`,n=e.version,r=`Versa-Setup-${n}.exe`,i=`${t}/download/v${n}`,a=`${i}/${r}`,o=(t,n)=>new Intl.NumberFormat(n===`pt`?`pt-MZ`:`en`,{maximumFractionDigits:1}).format(e[t===`exe`?`exeBytes`:`msiBytes`]/1e6)+` MB`;export{o as a,t as i,a as n,n as o,i as r,r as t};

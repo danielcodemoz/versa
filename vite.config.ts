@@ -8,7 +8,7 @@ export default defineConfig({
   optimizeDeps: { include: ['tesseract.js'] },
   build: {
     rollupOptions: {
-      input: ["index.html", "desktop.html", "windows.html", "editor.html", "desktop-editor.html"],
+      input: ["index.html", "desktop.html", "windows.html", "editor.html", "desktop-editor.html", "pro.html"],
       output: {
         // Static hosts (nginx default mime.types) serve .mjs as application/octet-stream,
         // which browsers refuse for module workers. Emit .mjs assets (pdf.js worker) as .js.

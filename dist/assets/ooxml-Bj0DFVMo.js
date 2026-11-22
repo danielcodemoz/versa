@@ -1,0 +1,1 @@
+export{i as openOffice,l as sanitiseOffice,u as xml}from"./ooxml-aanEDWNU.js";

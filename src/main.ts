@@ -3,6 +3,7 @@ import { categories, recipes, t, type Category, type Language } from '../package
 import { copy, questions, windowsSteps } from './copy'
 import { icon } from './icons'
 import { mountWheel } from './wheel'
+import { loadLicense } from '../packages/engine/license'
 import { installerUrl } from './release'
 import logoLight from '../brand/logo-light.svg'
 import logoDark from '../brand/logo-dark.svg'
@@ -34,7 +35,7 @@ app.innerHTML = `
       <nav aria-label="Versa">
         <a href="#categorias">${label('categories')}</a>
         <a href="#escolas">${label('school')}</a>
-        ${desktop === null ? `<a class="nav-editor" href="/editor.html">${label('editor')}</a>` : ''}
+        ${desktop === null ? `<a class="nav-editor" href="/editor.html">${label('editor')}</a><a href="/pro.html">Pro</a>` : ''}
         <a href="#faq">${label('help')}</a>
       </nav>
       <div class="switches">${languageButton()}${themeButton()}</div>
@@ -138,6 +139,7 @@ app.innerHTML = `
   <div class="drag-shade" aria-hidden="true"></div>`
 
 const wheelRoot = app.querySelector<HTMLElement>('.lab')!
+await loadLicense()
 const wheel = mountWheel(wheelRoot, () => language)
 const categoryGrid = app.querySelector('.category-grid')!
 const windowsList = app.querySelector<HTMLOListElement>('.windows-steps')!
