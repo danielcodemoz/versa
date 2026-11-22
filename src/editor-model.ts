@@ -27,6 +27,7 @@ export interface FormField {
   options?: string[]
   multiline?: boolean
   multiple?: boolean
+  editable?: boolean
   maxLength?: number
 }
 export interface Source { pdf: PDFDocumentProxy; close: () => Promise<void> | void; data: Blob; fields: FormField[] }

@@ -326,7 +326,7 @@ test('exports shapes, stamps and PDF comments and supports undo, redo and Del', 
   expect(annotation?.get(PDFName.of('Contents'))?.toString()).toContain('0043006F006E00660065007200690072')
 })
 
-test('the Windows editor opens real PDF bytes and sends a copy to the native save dialog', async ({ page }) => {
+test('the Windows editor sends PDF and split ZIP output to the native save dialog', async ({ page }) => {
   await page.addInitScript(() => {
     const callbacks = new Map<number, (event: object) => void>()
     let next = 0
@@ -356,6 +356,12 @@ test('the Windows editor opens real PDF bytes and sends a copy to the native sav
   await page.getByRole('button', { name: 'Guardar PDF' }).click()
   await expect(page.getByRole('status')).toContainText('PDF guardado')
   expect(await page.evaluate(() => (window as Window & { editorSave?: object }).editorSave)).toEqual({ name: 'Ficha 2026.pdf', signature: '%PDF-' })
+  await page.getByRole('button', { name: 'Dividir PDF', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Dividir PDF' })
+  await dialog.getByRole('textbox', { name: 'Intervalos de páginas' }).fill('1, 2-3')
+  await dialog.getByRole('button', { name: 'Dividir PDF' }).click()
+  await expect.poll(() => page.evaluate(() => (window as Window & { editorSave?: object }).editorSave))
+    .toMatchObject({ name: 'Ficha 2026.zip', signature: expect.stringMatching(/^PK\x03\x04/) })
 })
 
 test('reorders a multi-selection from the grid and saves with the edited document name', async ({ page }) => {
@@ -493,4 +499,113 @@ test.describe('page grid with touch input', () => {
     await expect(page.locator('[data-thumb="0"]')).toHaveAttribute('aria-pressed', 'false')
     await expect(page.locator('[data-thumb="2"]')).toHaveAttribute('aria-pressed', 'true')
   })
+})
+
+test('merges a batch in picker order, preserving independently editable fields', async ({ page }) => {
+  const pdf = async (width: number, fieldName: string, value: string) => {
+    const document = await PDFDocument.create()
+    const sheet = document.addPage([width, 300])
+    const field = document.getForm().createTextField(fieldName)
+    field.addToPage(sheet, { x: 10, y: 20, width: 120, height: 22 })
+    field.setText(value)
+    return { name: `${width}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from(await document.save()) }
+  }
+  const first = await pdf(400, 'PDF 2.Nome', 'Primeiro')
+  const second = await pdf(250, 'Nome', 'Segundo')
+  const third = await pdf(350, 'Nome', 'Terceiro')
+  await page.goto('/editor.html')
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Juntar PDFs' }).click()
+  await (await chooser).setFiles([first, second, third])
+  await expect(page.locator('[data-total]')).toHaveText('3')
+  await page.locator('[data-thumbs] button[data-thumb]').nth(1).click()
+  await page.getByText('Campos de formulário', { exact: true }).click()
+  await page.getByRole('textbox', { name: 'Nome', exact: true }).fill('Editado')
+  const result = await PDFDocument.load((await save(page)).bytes)
+  expect(result.getPages().map(sheet => sheet.getWidth())).toEqual([400, 250, 350])
+  expect(result.getForm().getTextField('PDF 2.Nome').getText()).toBe('Primeiro')
+  expect(result.getForm().getTextField('PDF 2 (2).Nome').getText()).toBe('Editado')
+  expect(result.getForm().getTextField('PDF 3.Nome').getText()).toBe('Terceiro')
+
+  await page.locator('[data-merge]').setInputFiles([second, { ...third, buffer: Buffer.from('corrupt') }])
+  await expect(page.locator('[data-status]')).toContainText('Ficheiro incompleto ou danificado')
+  await expect(page.locator('[data-total]')).toHaveText('3')
+
+  await page.locator('[data-merge]').setInputFiles([third, second])
+  await expect(page.locator('[data-total]')).toHaveText('5')
+  const appended = await PDFDocument.load((await save(page)).bytes)
+  expect(appended.getPages().map(sheet => sheet.getWidth())).toEqual([400, 250, 350, 350, 250])
+  await page.getByRole('button', { name: 'Desfazer' }).click()
+  await expect(page.locator('[data-total]')).toHaveText('3')
+})
+
+test('splits ranges of the edited document into separate PDFs in one download', async ({ page }) => {
+  const original = await PDFDocument.load(await document3())
+  const dropdown = original.getForm().createDropdown('Bairro')
+  dropdown.addOptions(['Central'])
+  dropdown.enableEditing()
+  dropdown.addToPage(original.getPage(1), { x: 20, y: 100, width: 140, height: 22 })
+  await openEditor(page, Buffer.from(await original.save()))
+  await page.getByText('Campos de formulário', { exact: true }).click()
+  await page.getByRole('combobox', { name: 'Bairro' }).fill('Malhangalene Ł')
+  await page.getByRole('button', { name: 'Dividir PDF', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Dividir PDF' })
+  const ranges = dialog.getByRole('textbox', { name: 'Intervalos de páginas' })
+  const submit = dialog.getByRole('button', { name: 'Dividir PDF' })
+  for (const invalid of ['', '3–4', '1–2, 2']) {
+    await ranges.fill(invalid)
+    await submit.click()
+    await expect(ranges).toHaveAttribute('aria-invalid', 'true')
+    await expect(dialog.getByRole('alert')).toContainText('Escolhe páginas válidas')
+  }
+  await ranges.fill('3, 1–2')
+  const pending = page.waitForEvent('download')
+  await submit.click()
+  const download = await pending
+  expect(download.suggestedFilename()).toBe('tres.zip')
+  const { readFile } = await import('node:fs/promises')
+  const { unzipSync } = await import('fflate')
+  const files = unzipSync(await readFile(await download.path()))
+  expect(Object.keys(files)).toEqual(['tres - 3.pdf', 'tres - 1-2.pdf'])
+  const single = await PDFDocument.load(files['tres - 3.pdf'])
+  expect(single.getPages().map(sheet => sheet.getWidth())).toEqual([200])
+  expect(single.getForm().getFields()).toHaveLength(0)
+  const pair = await PDFDocument.load(files['tres - 1-2.pdf'])
+  expect(pair.getPages().map(sheet => sheet.getWidth())).toEqual([400, 300])
+  expect(pair.getForm().getDropdown('Bairro').getSelected()).toEqual(['Malhangalene Ł'])
+  await expect(page.locator('[data-total]')).toHaveText('3')
+})
+
+test('draws, moves and resizes a signature before saving', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1100 })
+  await openEditor(page, await document3())
+  await page.getByRole('button', { name: 'Assinatura' }).click()
+  const pad = (await page.getByRole('img', { name: 'Área da assinatura' }).boundingBox())!
+  await page.mouse.move(pad.x + pad.width * .2, pad.y + pad.height * .7)
+  await page.mouse.down()
+  await page.mouse.move(pad.x + pad.width * .4, pad.y + pad.height * .3, { steps: 5 })
+  await page.mouse.move(pad.x + pad.width * .7, pad.y + pad.height * .65, { steps: 5 })
+  await page.mouse.up()
+  await page.getByRole('button', { name: 'Usar assinatura' }).click()
+  const signature = page.locator('.ed-pic')
+  await expect(signature).toBeVisible()
+  await signature.scrollIntoViewIfNeeded()
+  const drag = async (x: number, y: number, dx: number, dy: number) => {
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x + dx, y + dy, { steps: 5 })
+    await page.mouse.up()
+  }
+  const before = (await signature.boundingBox())!
+  await drag(before.x + before.width / 2, before.y + before.height / 2, 30, 20)
+  const moved = (await signature.boundingBox())!
+  expect(moved.x - before.x).toBeCloseTo(30)
+  expect(moved.y - before.y).toBeCloseTo(20)
+  const grip = (await signature.locator('[data-grip]').boundingBox())!
+  await drag(grip.x + grip.width / 2, grip.y + grip.height / 2, 40, 0)
+  const resized = (await signature.boundingBox())!
+  expect(resized.width - moved.width).toBeCloseTo(40)
+  expect(resized.width / resized.height).toBeCloseTo(moved.width / moved.height)
+  const saved = await PDFDocument.load((await save(page)).bytes)
+  expect(saved.getPage(0).node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict)?.keys()).toHaveLength(1)
 })

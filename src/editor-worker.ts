@@ -1,11 +1,13 @@
 import type { Bitmap, FormField, FormValue, Meta, Sheet } from './editor-model'
 
-type Save = { action: 'save'; sheets: Sheet[]; metas: Meta[]; sources: Blob[]; bitmaps: Bitmap[]; values: Record<string, FormValue> }
+type Content = { metas: Meta[]; sources: Blob[]; bitmaps: Bitmap[]; values: Record<string, FormValue> }
+type Save = Content & { action: 'save'; sheets: Sheet[] }
+type Split = Content & { action: 'split'; parts: { name: string; sheets: Sheet[] }[] }
 type Forms = { action: 'forms'; source: Blob }
 type Unlock = { action: 'unlock'; source: Blob; password: string }
-export type EditorRequest = Save | Forms | Unlock
+export type EditorRequest = Save | Split | Forms | Unlock
 
-export function editInWorker(request: Save): Promise<ArrayBuffer>
+export function editInWorker(request: Save | Split): Promise<ArrayBuffer>
 export function editInWorker(request: Forms): Promise<FormField[]>
 export function editInWorker(request: Unlock): Promise<Blob>
 export function editInWorker(request: EditorRequest) {

@@ -62,6 +62,9 @@ const P = {
   pageBefore: ['Página antes', 'Page before'], pageAfter: ['Página depois', 'Page after'],
   duplicate: ['Duplicar', 'Duplicate'], importPages: ['Inserir de outro PDF', 'Insert from PDF'],
   importHint: ['Indica páginas como 1, 3–5. Deixa vazio para inserir todas.', 'Enter pages such as 1, 3–5. Leave blank to insert all.'],
+  merge: ['Juntar PDFs', 'Merge PDFs'], split: ['Dividir PDF', 'Split PDF'],
+  splitRanges: ['Intervalos de páginas', 'Page ranges'],
+  splitHint: ['Indica intervalos sem sobreposição, como 1–3, 4–6, 7. Cada intervalo gera um PDF no ZIP.', 'Enter non-overlapping ranges such as 1–3, 4–6, 7. Each range becomes a PDF in the ZIP.'],
   range: ['Páginas a inserir', 'Pages to insert'], position: ['Posição', 'Position'],
   invalidRange: ['Escolhe páginas válidas, por exemplo 1, 3–5.', 'Choose valid pages, for example 1, 3–5.'],
   extract: ['Extrair seleccionadas', 'Extract selected'], extractMark: ['Seleccionar página', 'Select page'],
@@ -115,6 +118,7 @@ app.innerHTML = `
       <div class="ed-drop" data-dropzone>
         <span class="ed-drop-icon">${icon('pdf', 44)}</span><strong data-k="drop">${tx('drop')}</strong>
         <div><button class="button" type="button" data-pick>${icon('upload', 18)} ${span('pick')}</button>
+        <button class="quiet" type="button" data-act="merge">${span('merge')}</button>
         <button class="quiet" type="button" data-sample>${span('sample')}</button></div>
         <small>${icon('lock', 14)} ${span('privacy')}</small>
       </div>
@@ -132,7 +136,7 @@ app.innerHTML = `
           ${group('annotate', toolButton('pen') + toolButton('hl', 'highlight') + toolButton('cover') + toolButton('comment') + menu('shapes', 'data-shape', shapeKinds) + menu('stamps', 'data-stamp', ['approved', 'draft', 'date']))}
           ${group('pages', button('grid', 'grid', 'data-act="grid" aria-pressed="false"') + action('all', 'check') + action('none', 'close') +
             ([['pageBefore', 'pageBefore'], ['pageAfter', 'pageAfter'], ['duplicate', 'duplicate'], ['del', 'trash'], ['rotl', 'rotl'], ['rotr', 'rotr'],
-              ['first', 'first'], ['earlier', 'left'], ['later', 'right'], ['last', 'last'], ['importPages', 'upload'], ['extract', 'down']] as const)
+              ['first', 'first'], ['earlier', 'left'], ['later', 'right'], ['last', 'last'], ['importPages', 'upload'], ['extract', 'down'], ['merge', 'duplicate'], ['split', 'down']] as const)
               .map(([key, glyph]) => action(key, glyph)).join('') + '<span data-selection aria-live="polite"></span>')}
         </div>
         <div class="ed-props" hidden>
@@ -161,6 +165,7 @@ app.innerHTML = `
     <div class="ed-status" role="status" data-status></div>
     <input type="file" hidden accept=".pdf,application/pdf" data-open>
     <input type="file" hidden accept=".pdf,application/pdf" data-import>
+    <input type="file" hidden multiple accept=".pdf,application/pdf" data-merge>
     <input type="file" hidden accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" data-pic>
     <input type="file" hidden accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" data-replace-pic>
   </main>
@@ -172,6 +177,15 @@ app.innerHTML = `
       <p class="ed-error" id="import-error" role="alert"></p>
       <label class="ed-type">${span('position')} <select data-position><option value="after" data-k="pageAfter">${tx('pageAfter')}</option><option value="before" data-k="pageBefore">${tx('pageBefore')}</option></select></label>
       <div class="ed-dialog-actions"><button class="button button-small" type="submit">${span('apply')}</button><button class="quiet" type="button" data-cancel-dialog>${span('cancel')}</button></div>
+    </form>
+  </dialog>
+  <dialog class="ed-dialog" data-split-dialog aria-labelledby="split-title">
+    <h2 id="split-title">${span('split')}</h2>
+    <p data-k="splitHint">${tx('splitHint')}</p>
+    <form data-split-form>
+      <label class="ed-type">${span('splitRanges')} <input type="text" data-split-ranges aria-describedby="split-error"></label>
+      <p class="ed-error" id="split-error" role="alert"></p>
+      <div class="ed-dialog-actions"><button class="button button-small" type="submit">${span('split')}</button><button class="quiet" type="button" data-cancel-dialog>${span('cancel')}</button></div>
     </form>
   </dialog>
   <dialog class="ed-dialog" data-comment-dialog aria-labelledby="comment-title">
@@ -200,7 +214,9 @@ let sources: Source[] = []
 let formValues: Record<string, FormValue> = {}
 const extracting = new Set<number>()
 let stamp: StampKind = 'approved'
-let pendingImport: { source: Source; metas: Meta[] } | undefined
+let merging = false
+type ImportCandidate = { source: Source; metas: Meta[] }
+let pendingImport: ImportCandidate | undefined
 let pendingComment: { sheet: Sheet; at: Point; id?: number } | undefined
 let displayedBlocks: Awaited<ReturnType<OriginalInspector>> | undefined
 let inspectOriginals: Promise<typeof import('./editor-original') | undefined> | undefined
@@ -308,35 +324,39 @@ async function open(next: File) {
     const result = await readSource(next, 0, id)
     if (!result) return
     if (id !== generation) { await result.source.close(); return }
-    stopOriginalEdit()
-    drawTask?.cancel()
-    for (const old of sources) void Promise.resolve(old.close()).catch(() => {})
-    sources = [result.source]
-    metas = result.metas
-    file = next
-    secureCopy = result.secure
-    documentName = nameInput.value = next.name.replace(/\.pdf$/i, '')
-    grid = false
-    groupAnchor = undefined
-    sheets = metas.map((_, src) => makeSheet(src))
-    thumbnails?.reset()
-    bitmaps.forEach(bitmap => URL.revokeObjectURL(bitmap.url))
-    bitmaps.length = 0
-    undoStack.length = redoStack.length = 0
-    extracting.clear()
-    formValues = {}
-    current = 0
-    selected = undefined
-    dirty = false
-    zoom = 1
-    startPanel.hidden = true
-    work.hidden = false
-    setTool('select')
-    renderAll()
-    say(tx(secureCopy ? 'unlocked' : 'opened'))
+    showDocument(next, [result])
   } catch {
     if (id === generation) say(t(language, copy.damaged))
   }
+}
+
+function showDocument(next: File, inputs: (ImportCandidate & { secure: boolean })[]) {
+  stopOriginalEdit()
+  drawTask?.cancel()
+  for (const old of sources) void Promise.resolve(old.close()).catch(() => {})
+  sources = inputs.map(input => input.source)
+  metas = inputs.flatMap((input, source) => input.metas.map(meta => ({ ...meta, source })))
+  file = next
+  secureCopy = inputs.some(input => input.secure)
+  documentName = nameInput.value = next.name.replace(/\.pdf$/i, '')
+  grid = false
+  groupAnchor = undefined
+  sheets = metas.map((_, src) => makeSheet(src))
+  thumbnails?.reset()
+  bitmaps.forEach(bitmap => URL.revokeObjectURL(bitmap.url))
+  bitmaps.length = 0
+  undoStack.length = redoStack.length = 0
+  extracting.clear()
+  formValues = {}
+  current = 0
+  selected = undefined
+  dirty = inputs.length > 1
+  zoom = 1
+  startPanel.hidden = true
+  work.hidden = false
+  setTool('select')
+  renderAll()
+  say(tx(secureCopy ? 'unlocked' : 'opened'))
 }
 
 // ---------- rendering ----------
@@ -581,14 +601,23 @@ function renderFields() {
   form.hidden = grid || !fields.length
   holder.replaceChildren()
   if (source === undefined || grid) return
-  for (const field of fields) {
+  for (const [index, field] of fields.entries()) {
     const key = fieldKey(source, field.name)
     const value = formValues[key] ?? field.value
     const label = document.createElement('label')
     const title = document.createElement('span')
     title.textContent = field.name
     let control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    if (field.kind === 'choice') {
+    let suggestions: HTMLDataListElement | undefined
+    if (field.editable && !field.multiple) {
+      const input = document.createElement('input')
+      input.value = Array.isArray(value) ? value[0] ?? '' : String(value)
+      suggestions = document.createElement('datalist')
+      suggestions.id = `ed-field-options-${index}`
+      for (const option of field.options ?? []) suggestions.append(new Option(option, option))
+      input.setAttribute('list', suggestions.id)
+      control = input
+    } else if (field.kind === 'choice') {
       const dropdown = document.createElement('select')
       dropdown.multiple = field.multiple ?? false
       const selected = Array.isArray(value) ? value : [value]
@@ -616,6 +645,7 @@ function renderFields() {
     })
     label.append(title, control)
     holder.append(label)
+    if (suggestions) holder.append(suggestions)
   }
 }
 
@@ -822,6 +852,9 @@ function syncControls() {
   const contiguousFromStart = positions.every((at, index) => at === index)
   const contiguousToEnd = positions.every((at, index) => at === sheets.length - positions.length + index)
   const disabled = (key: Key, value: boolean) => { q<HTMLButtonElement>(`[data-act=${key}]`).disabled = value }
+  app.querySelectorAll<HTMLButtonElement>('[data-act=merge]').forEach(button => { button.disabled = merging })
+  disabled('importPages', merging)
+  disabled('split', saving)
   disabled('earlier', contiguousFromStart)
   disabled('later', contiguousToEnd)
   disabled('first', contiguousFromStart)
@@ -1025,9 +1058,67 @@ function duplicatePage() {
   const copies = sheets.filter(sheet => ids.has(sheet.id)).map(sheet => ({ ...structuredClone(sheet), id: nextId++ }))
   if (copies.length) addSheets(copies, true)
 }
-async function importPdf(next: File) {
+const importLimit = 192 * 1024 ** 2
+const sourceBytes = () => sources.reduce((total, source) => total + source.data.size, 0)
+
+function registerSource(candidate: ImportCandidate, pages: number[]) {
+  const source = sources.push(candidate.source) - 1
+  return pages.map(page => makeSheet(metas.push({ ...candidate.metas[page], source }) - 1))
+}
+
+async function mergePdfs(files: File[]) {
+  if (!files.length || merging || pendingImport || askingPassword()) return
   const mine = generation
-  if (sources.reduce((total, source) => total + source.data.size, next.size) > 192 * 1024 ** 2) {
+  if (files.reduce((total, next) => total + next.size, sourceBytes()) > importLimit) {
+    say(t(language, copy.large))
+    return
+  }
+  const candidates: (ImportCandidate & { secure: boolean })[] = []
+  merging = true
+  syncControls()
+  say(tx('opening'))
+  try {
+    for (const next of files) {
+      if (mine !== generation) return
+      const candidate = await readSource(next, 0, mine)
+      if (!candidate) return
+      candidates.push(candidate)
+    }
+    if (mine !== generation) return
+    if (candidates.reduce((total, candidate) => total + candidate.source.data.size, sourceBytes()) > importLimit) {
+      say(t(language, copy.large))
+      return
+    }
+    if (!file) {
+      showDocument(files[0], candidates)
+      candidates.length = 0
+      return
+    }
+    applyOriginal?.()
+    snap()
+    secureCopy ||= candidates.some(candidate => candidate.secure)
+    const start = sheets.length
+    for (const candidate of candidates) {
+      for (const sheet of registerSource(candidate, candidate.metas.map((_, index) => index))) sheets.push(sheet)
+    }
+    candidates.length = 0
+    current = start
+    selected = undefined
+    renderAll()
+    say(tx(secureCopy ? 'unlocked' : 'opened'))
+  } catch {
+    if (mine === generation) say(t(language, copy.damaged))
+  } finally {
+    await Promise.allSettled(candidates.map(async candidate => candidate.source.close()))
+    merging = false
+    syncControls()
+  }
+}
+
+async function importPdf(next: File) {
+  if (merging) return
+  const mine = generation
+  if (sourceBytes() + next.size > importLimit) {
     say(t(language, copy.large))
     return
   }
@@ -1036,7 +1127,7 @@ async function importPdf(next: File) {
     const candidate = await readSource(next, 0, mine)
     if (!candidate) return
     const dialog = q<HTMLDialogElement>('[data-import-dialog]')
-    if (mine !== generation || dialog.open) { await candidate.source.close(); return }
+    if (mine !== generation || merging || dialog.open) { await candidate.source.close(); return }
     pendingImport = candidate
     const field = q<HTMLInputElement>('[data-range]')
     field.value = ''
@@ -1050,18 +1141,54 @@ async function importPdf(next: File) {
     if (mine === generation) say(t(language, copy.damaged))
   }
 }
-function pageRange(text: string, count: number) {
-  if (!text.trim()) return Array.from({ length: count }, (_, index) => index)
-  const pages = new Set<number>()
+function rangeGroups(text: string, count: number) {
+  const ranges: { from: number; to: number }[] = []
   for (const part of text.split(',')) {
     const match = part.trim().match(/^(\d+)(?:\s*[-–]\s*(\d+))?$/)
-    if (!match) return undefined
+    if (!match) return
     const from = Number(match[1]), to = Number(match[2] ?? match[1])
-    if (from < 1 || to < from || to > count) return undefined
-    for (let page = from; page <= to; page++) pages.add(page - 1)
+    if (from < 1 || to < from || to > count) return
+    ranges.push({ from, to })
   }
-  return [...pages]
+  return ranges
 }
+
+const rangePages = ({ from, to }: { from: number; to: number }) =>
+  Array.from({ length: to - from + 1 }, (_, index) => from + index - 1)
+
+function pageRange(text: string, count: number) {
+  const groups = text.trim() ? rangeGroups(text, count) : [{ from: 1, to: count }]
+  if (groups) return [...new Set(groups.flatMap(rangePages))]
+}
+
+const splitDialog = q<HTMLDialogElement>('[data-split-dialog]')
+const splitInput = q<HTMLInputElement>('[data-split-ranges]')
+
+function showSplit() {
+  splitInput.value = ''
+  splitInput.removeAttribute('aria-invalid')
+  q('#split-error').textContent = ''
+  splitDialog.showModal()
+  splitInput.focus()
+}
+
+q<HTMLFormElement>('[data-split-form]').addEventListener('submit', event => {
+  event.preventDefault()
+  const ranges = rangeGroups(splitInput.value, sheets.length)
+  const ordered = ranges?.slice().sort((a, b) => a.from - b.from)
+  if (!ranges || ordered?.some((group, index) => index > 0 && group.from <= ordered[index - 1].to)) {
+    splitInput.setAttribute('aria-invalid', 'true')
+    q('#split-error').textContent = tx('invalidRange')
+    splitInput.focus()
+    return
+  }
+  splitDialog.close()
+  void save(false, ranges.map(range => ({
+    label: range.from === range.to ? String(range.from) : `${range.from}-${range.to}`,
+    indices: rangePages(range),
+  })))
+})
+
 q<HTMLFormElement>('[data-import-form]').addEventListener('submit', event => {
   event.preventDefault()
   const candidate = pendingImport
@@ -1074,11 +1201,7 @@ q<HTMLFormElement>('[data-import-form]').addEventListener('submit', event => {
     field.focus()
     return
   }
-  const source = sources.push(candidate.source) - 1
-  const next = pages.map(page => {
-    const src = metas.push({ ...candidate.metas[page], source }) - 1
-    return makeSheet(src)
-  })
+  const next = registerSource(candidate, pages)
   pendingImport = undefined
   q<HTMLDialogElement>('[data-import-dialog]').close()
   addSheets(next, q<HTMLSelectElement>('[data-position]').value === 'after')
@@ -1206,7 +1329,7 @@ const imageTools = () => import('./editor-images')
 const storePicture = (bitmap: Bitmap) => bitmaps.push(bitmap) - 1
 const pictureInput = q<HTMLInputElement>('[data-replace-pic]')
 
-async function addImage(blob: Blob) {
+async function addImage(blob: Blob, widthFraction = .4) {
   const sheet = sheets[current]
   const mine = generation
   if (!sheet) return
@@ -1215,7 +1338,7 @@ async function addImage(blob: Blob) {
     if (mine !== generation || sheet !== sheets[current]) { URL.revokeObjectURL(bitmap.url); return }
     const [fw, fh] = frameOf(sheet)
     snap()
-    const w = Math.min(fw * .4, fh * .55 * bitmap.w / bitmap.h, bitmap.w)
+    const w = Math.min(fw * widthFraction, fh * .55 * bitmap.w / bitmap.h, bitmap.w)
     const h = w * bitmap.h / bitmap.w
     const note: Picture = { kind: 'pic', id: nextId++, x: (fw - w) / 2, y: (fh - h) / 2, w, h, image: storePicture(bitmap), angle: 0, opacity: 1 }
     if (grid) toggleGrid()
@@ -1224,7 +1347,6 @@ async function addImage(blob: Blob) {
     setTool('select')
     renderNotes()
     notesEl.querySelector<HTMLElement>(`[data-ann="${note.id}"]`)?.focus({ preventScroll: true })
-    return note
   } catch { if (mine === generation) say(tx('badImage')) }
 }
 
@@ -1312,13 +1434,7 @@ async function useSignature() {
     if (mine !== generation) return
     const blob = await requestSignature(app, language)
     if (!blob || mine !== generation) return
-    const note = await addImage(blob)
-    if (note) {
-      const w = Math.min(note.w, frameOf(sheets[current])[0] * .3)
-      note.h *= w / note.w
-      note.w = w
-      renderNotes()
-    }
+    await addImage(blob, .3)
   } finally { signing = false }
 }
 
@@ -1341,7 +1457,7 @@ nameInput.addEventListener('input', () => {
   syncControls()
 })
 
-async function save(extract = false) {
+async function save(extract = false, ranges?: { label: string; indices: number[] }[]) {
   if (!file || saving) return
   applyOriginal?.()
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
@@ -1349,17 +1465,24 @@ async function save(extract = false) {
   if (!pages.length) return
   const stamp = snapshot()
   const mine = generation
-  const name = filenameFor(extract)
+  const pdfName = filenameFor(extract)
+  const name = ranges ? pdfName.replace(/\.pdf$/, '.zip') : pdfName
   saving = true
   syncControls()
   say(tx('saving'))
   try {
-    const bytes = await editInWorker({ action: 'save', sheets: pages, metas, sources: sources.map(source => source.data), bitmaps, values: formValues })
+    const content = { metas, sources: sources.map(source => source.data), bitmaps, values: formValues }
+    const bytes = ranges
+      ? await editInWorker({ action: 'split', ...content, parts: ranges.map(({ label, indices }) => ({
+        name: pdfName.replace(/\.pdf$/, ` - ${label}.pdf`),
+        sheets: indices.map(index => sheets[index]),
+      })) })
+      : await editInWorker({ action: 'save', ...content, sheets: pages })
     if (mine !== generation) return
     if (native) {
       if (!await native.save(name, bytes)) { say(''); return }
     } else {
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+      const url = URL.createObjectURL(new Blob([bytes], { type: ranges ? 'application/zip' : 'application/pdf' }))
       const link = document.createElement('a')
       link.href = url
       link.download = name
@@ -1369,8 +1492,8 @@ async function save(extract = false) {
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
     }
     if (mine !== generation) return
-    if (!extract && stamp === snapshot()) dirty = false
-    say(tx(extract ? 'extracted' : 'saved'))
+    if (!ranges && !extract && stamp === snapshot()) dirty = false
+    say(tx(extract || ranges ? 'extracted' : 'saved'))
   } catch {
     if (mine === generation) say(tx('fail'))
   } finally {
@@ -1398,6 +1521,7 @@ app.addEventListener('click', event => {
     undo, redo, delNote: removeSelected, save: () => void save(), del: deletePage,
     pageBefore: () => blankPage(false), pageAfter: () => blankPage(true), duplicate: duplicatePage,
     importPages: () => q<HTMLInputElement>('[data-import]').click(), extract: () => void save(true),
+    merge: () => q<HTMLInputElement>('[data-merge]').click(), split: showSplit,
     rotl: () => turnPage(-90), rotr: () => turnPage(90),
     earlier: () => moveNear(-1), later: () => moveNear(1), first: () => moveEdge(false), last: () => moveEdge(true),
     grid: toggleGrid, all: () => markPages(true), none: () => markPages(false),
@@ -1429,6 +1553,12 @@ q<HTMLInputElement>('[data-import]').addEventListener('change', event => {
   const next = input.files?.[0]
   input.value = ''
   if (next) void importPdf(next)
+})
+q<HTMLInputElement>('[data-merge]').addEventListener('change', event => {
+  const input = event.currentTarget as HTMLInputElement
+  const files = [...input.files ?? []]
+  input.value = ''
+  void mergePdfs(files)
 })
 openInput.addEventListener('change', () => { const next = openInput.files?.[0]; openInput.value = ''; if (next) void open(next) })
 picInput.addEventListener('change', () => { const next = picInput.files?.[0]; picInput.value = ''; if (next) void addImage(next) })
