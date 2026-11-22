@@ -21,6 +21,7 @@ const isShape = (tool: Tool): tool is ShapeKind => tool === 'cover' || shapeKind
 
 const P = {
   back: ['Voltar ao Versa', 'Back to Versa'],
+  backShort: ['Voltar', 'Back'],
   title: ['Editar PDF', 'Edit PDF'],
   intro: ['Abre um PDF, escreve, desenha, acrescenta imagens e assinatura, e guarda uma cópia nova. O ficheiro nunca sai do teu dispositivo.', 'Open a PDF, type, draw, add images and a signature, then save a new copy. The file never leaves your device.'],
   drop: ['Larga um PDF aqui', 'Drop a PDF here'],
@@ -109,7 +110,7 @@ const menu = (key: Key, attr: string, values: readonly Key[]) =>
 app.innerHTML = `
   <header class="masthead"><div class="shell masthead-inner">
     <a class="brand-link" href="/" aria-label="Versa"><img class="brand brand-light" src="${logoLight}" width="118" height="42" alt="Versa"><img class="brand brand-dark" src="${logoDark}" width="118" height="42" alt="Versa"></a>
-    <a class="text-link ed-back" href="/">${icon('arrow', 16)} ${span('back')}</a>
+    <a class="text-link ed-back" href="/">${icon('arrow', 16)} <span class="ed-back-long">${span('back')}</span><span class="ed-back-short">${span('backShort')}</span></a>
     <div class="switches"><button class="switch language-switch" type="button" data-language></button><button class="switch theme-switch" type="button" data-theme></button></div>
   </div></header>
   <main class="editor shell">
