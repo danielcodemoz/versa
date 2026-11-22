@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { PDFDict, PDFDocument, PDFName, StandardFonts, degrees, rgb } from 'pdf-lib'
 import { framePointToPdf, frameSize, sheetTransform, viewToFrame } from '../src/editor-geometry'
@@ -220,6 +220,125 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByLabel('Tamanho')).toBeVisible()
     expect(await overflow()).toBeLessThanOrEqual(0)
   })
+}
+
+async function expectControlInsets(container: Locator) {
+  await expect(container).toBeVisible()
+  const violations = await container.evaluate(element => {
+    const bounds = element.getBoundingClientRect()
+    const style = getComputedStyle(element)
+    const innerEdges = {
+      left: bounds.left + parseFloat(style.borderLeftWidth),
+      right: bounds.right - parseFloat(style.borderRightWidth),
+      top: bounds.top + parseFloat(style.borderTopWidth),
+      bottom: bounds.bottom - parseFloat(style.borderBottomWidth),
+    }
+
+    return [...element.querySelectorAll('button, input, select, textarea, canvas')].flatMap(control => {
+      const rect = control.getBoundingClientRect()
+      if (!rect.width || !rect.height) return []
+      const inset = Math.min(rect.left - innerEdges.left, innerEdges.right - rect.right,
+        rect.top - innerEdges.top, innerEdges.bottom - rect.bottom)
+      return inset < 12 ? [{ control: control.outerHTML.slice(0, 200), inset }] : []
+    })
+  })
+  expect(violations).toEqual([])
+}
+
+for (const width of [1440, 1280, 1024, 768, 390, 360]) {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`editor controls fit at ${width}px in ${theme} mode`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 })
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+      const pdf = await document3()
+      await openEditor(page, pdf)
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+      await page.evaluate(() => document.fonts.ready)
+      const expectNoOverflow = async () => {
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      }
+      await expectNoOverflow()
+      const back = page.getByRole('link', { name: width <= 420 ? 'Voltar' : 'Voltar ao Versa', exact: true })
+      const backText = back.locator('[data-k]:visible')
+      await expect(backText).toBeVisible()
+      expect(await backText.evaluate(text => {
+        const range = document.createRange()
+        range.selectNodeContents(text)
+        return range.getClientRects().length
+      })).toBe(1)
+      await expect(page.locator('.masthead .switches')).toHaveCSS('gap', '8px')
+
+      const toolbar = page.getByRole('toolbar')
+      await expect(toolbar).toHaveCSS('padding', width <= 760 ? '12px' : '16px')
+      await expectControlInsets(toolbar)
+      const name = toolbar.getByRole('textbox', { name: 'Nome do documento' })
+      await name.focus()
+      await expect(name).toHaveCSS('outline-width', '3px')
+      await expect(name).toHaveCSS('outline-offset', '5px')
+      const nameBox = (await name.boundingBox())!
+      const nameLabel = (await toolbar.locator('.ed-document label span').boundingBox())!
+      expect(nameBox.x).toBe(nameLabel.x)
+      expect(nameBox.y - (nameLabel.y + nameLabel.height)).toBe(8)
+
+      if (width <= 760) {
+        const groups = await toolbar.locator('.ed-group').evaluateAll(elements =>
+          elements.map(element => element.getBoundingClientRect().toJSON()))
+        expect(groups).toHaveLength(4)
+        for (const [index, group] of groups.entries()) {
+          expect(group.left).toBe(nameBox.x)
+          expect(group.width).toBe(nameBox.width)
+          if (index > 0) expect(group.top - groups[index - 1].bottom).toBeGreaterThanOrEqual(12)
+        }
+      }
+
+      await toolbar.locator('[data-tool="text"]').click()
+      await expect(toolbar.locator('.ed-props')).toBeVisible()
+      await expectControlInsets(toolbar)
+
+      const checkDialog = async (selector: string) => {
+        const dialog = page.locator(selector)
+        await expectControlInsets(dialog)
+        await expectNoOverflow()
+        const fields = dialog.locator('.ed-type')
+        for (const field of await fields.all()) {
+          const input = field.locator('input, select, textarea')
+          const alignment = await field.evaluate(label => {
+            const field = label.querySelector('input, select, textarea')!.getBoundingClientRect()
+            const range = document.createRange()
+            range.selectNode(label.firstChild!)
+            const text = range.getBoundingClientRect()
+            return { left: field.left - text.left, gap: field.top - text.bottom }
+          })
+          expect(alignment.left).toBe(0)
+          expect(alignment.gap).toBeGreaterThanOrEqual(8)
+          expect((await input.boundingBox())!.width).toBe((await field.boundingBox())!.width)
+        }
+        await page.keyboard.press('Escape')
+        await expect(dialog).toBeHidden()
+      }
+
+      await toolbar.locator('[data-act="split"]').click()
+      await checkDialog('[data-split-dialog]')
+      await page.locator('[data-import]').setInputFiles({ name: 'anexo.pdf', mimeType: 'application/pdf', buffer: pdf })
+      await checkDialog('[data-import-dialog]')
+
+      await toolbar.locator('[data-sign]').click()
+      await checkDialog('.ed-dialog[open]')
+      await toolbar.locator('[data-tool="comment"]').click()
+      await page.locator('[data-sheet]').click({ position: { x: 60, y: 60 } })
+      await checkDialog('[data-comment-dialog]')
+
+      await page.locator('[data-pic]').setInputFiles({ name: 'imagem.png', mimeType: 'image/png', buffer: png })
+      await expect(toolbar.locator('.ed-image-tools')).toBeVisible()
+      await expectControlInsets(toolbar)
+      await toolbar.locator('[data-picture="crop"]').click()
+      await checkDialog('.ed-dialog[open]')
+
+      await page.goto('/editor.html')
+      await page.locator('[data-open]').setInputFiles('tests/fixtures/editor-protected.pdf')
+      await checkDialog('[data-password-dialog]')
+    })
+  }
 }
 
 test('replaces existing text visually and preserves the new page order after reopening', async ({ page }) => {
